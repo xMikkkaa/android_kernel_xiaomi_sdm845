@@ -31,12 +31,6 @@
 #include <linux/susfs_def.h>
 #endif // #ifdef CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
 
-#ifdef CONFIG_KALLSYMS_ALL
-#define all_var 1
-#else
-#define all_var 0
-#endif
-
 /*
  * These will be re-linked against their real values
  * during the second link stage.
@@ -85,7 +79,7 @@ static inline int is_kernel(unsigned long addr)
 
 static int is_ksym_addr(unsigned long addr)
 {
-	if (all_var)
+	if (IS_ENABLED(CONFIG_KALLSYMS_ALL))
 		return is_kernel(addr);
 
 	return is_kernel_text(addr) || is_kernel_inittext(addr);
@@ -283,7 +277,7 @@ static unsigned long get_symbol_pos(unsigned long addr,
 	if (!symbol_end) {
 		if (is_kernel_inittext(addr))
 			symbol_end = (unsigned long)_einittext;
-		else if (all_var)
+		else if (IS_ENABLED(CONFIG_KALLSYMS_ALL))
 			symbol_end = (unsigned long)_end;
 		else
 			symbol_end = (unsigned long)_etext;
