@@ -1182,6 +1182,7 @@ struct __sk_buff {
 	/* ... here. */
 
 	__u32 data_meta;
+	__u32 wire_len;
 };
 
 struct bpf_tunnel_key {
