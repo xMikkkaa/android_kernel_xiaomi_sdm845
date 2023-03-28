@@ -764,6 +764,92 @@ RB_DECLARE_CALLBACKS(static, min_deadline_cb, struct sched_entity,
 /*
  * Enqueue an entity into the rb-tree:
  */
+#ifdef CONFIG_SCHED_DEBUG
+struct validate_data {
+	s64 va;
+	s64 avg_vruntime;
+	s64 avg_load;
+	s64 min_deadline;
+};
+
+static void __print_se(struct cfs_rq *cfs_rq, struct sched_entity *se, int level,
+		       struct validate_data *data)
+{
+	static const char indent[] = "                                           ";
+	unsigned long weight = scale_load_down(se->load.weight);
+	struct task_struct *p = NULL;
+
+	s64 v = se->vruntime - cfs_rq->min_vruntime;
+	s64 d = se->deadline - cfs_rq->min_vruntime;
+
+	data->avg_vruntime += v * weight;
+	data->avg_load += weight;
+
+	data->min_deadline = min(data->min_deadline, d);
+
+	if (entity_is_task(se))
+		p = task_of(se);
+
+	trace_printk("%.*s%lx w: %ld ve: %Ld lag: %Ld vd: %Ld vmd: %Ld %s (%d/%s)\n",
+		     level*2, indent, (unsigned long)se,
+		     weight,
+		     v, data->va - se->vruntime, d,
+		     se->min_deadline - cfs_rq->min_vruntime,
+		     entity_eligible(cfs_rq, se) ? "E" : "N",
+		     p ? p->pid : -1,
+		     p ? p->comm : "(null)");
+}
+
+static void __print_node(struct cfs_rq *cfs_rq, struct rb_node *node, int level,
+			 struct validate_data *data)
+{
+	if (!node)
+		return;
+
+	__print_se(cfs_rq, __node_2_se(node), level, data);
+	__print_node(cfs_rq, node->rb_left, level+1, data);
+	__print_node(cfs_rq, node->rb_right, level+1, data);
+}
+
+static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq);
+
+static void validate_cfs_rq(struct cfs_rq *cfs_rq, bool pick)
+{
+	struct sched_entity *curr = cfs_rq->curr;
+	struct rb_node *root = cfs_rq->tasks_timeline.rb_node;
+	struct validate_data _data = {
+		.va = avg_vruntime(cfs_rq),
+		.min_deadline = (~0ULL) >> 1,
+	}, *data = &_data;
+
+	trace_printk("---\n");
+
+	__print_node(cfs_rq, root, 0, data);
+
+	trace_printk("min_deadline: %Ld avg_vruntime: %Ld / %Ld = %Ld\n",
+		     data->min_deadline,
+		     data->avg_vruntime, data->avg_load,
+		     data->avg_load ? div_s64(data->avg_vruntime, data->avg_load) : 0);
+
+	if (WARN_ON_ONCE(cfs_rq->avg_vruntime != data->avg_vruntime))
+		cfs_rq->avg_vruntime = data->avg_vruntime;
+
+	if (WARN_ON_ONCE(cfs_rq->avg_load != data->avg_load))
+		cfs_rq->avg_load = data->avg_load;
+
+	data->min_deadline += cfs_rq->min_vruntime;
+	WARN_ON_ONCE(cfs_rq->avg_load && __node_2_se(root)->min_deadline != data->min_deadline);
+
+	if (curr && curr->on_rq)
+		__print_se(cfs_rq, curr, 0, data);
+
+	if (pick)
+		trace_printk("pick: %lx\n", (unsigned long)pick_eevdf(cfs_rq));
+}
+#else
+static inline void validate_cfs_rq(struct cfs_rq *cfs_rq, bool pick) { }
+#endif
+
 static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	struct rb_node **link = &cfs_rq->tasks_timeline.rb_node;
@@ -802,6 +888,9 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	rb_link_node(&se->run_node, parent, link);
 	min_deadline_cb.propagate(parent, NULL); /* suboptimal */
 	rb_insert_augmented(&se->run_node, &cfs_rq->tasks_timeline, &min_deadline_cb);
+
+	if (sched_feat(VALIDATE_QUEUE))
+		validate_cfs_rq(cfs_rq, true);
 }
 
 static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -815,6 +904,9 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 	rb_erase_augmented(&se->run_node, &cfs_rq->tasks_timeline, &min_deadline_cb);
 	avg_vruntime_sub(cfs_rq, se);
+
+	if (sched_feat(VALIDATE_QUEUE))
+		validate_cfs_rq(cfs_rq, true);
 }
 
 	rb_erase(&se->run_node, &cfs_rq->tasks_timeline);

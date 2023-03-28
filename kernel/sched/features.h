@@ -9,6 +9,8 @@ SCHED_FEAT(PLACE_BONUS, false)
 
 SCHED_FEAT(MINIMAL_VA, false)
 
+SCHED_FEAT(VALIDATE_QUEUE, false)
+
 /*
  * Prefer to schedule the task we woke last (assuming it failed
  * wakeup-preemption), since its likely going to consume data we
