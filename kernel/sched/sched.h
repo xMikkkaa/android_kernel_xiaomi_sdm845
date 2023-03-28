@@ -350,6 +350,9 @@ struct task_group {
 	struct cfs_rq **cfs_rq;
 	unsigned long shares;
 
+	/* latency priority of the group. */
+	int latency_prio;
+
 #ifdef	CONFIG_SMP
 	/*
 	 * load_avg can be heavily contended at clock tick time, so put
@@ -443,6 +446,8 @@ extern void sched_move_task(struct task_struct *tsk);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 extern int sched_group_set_shares(struct task_group *tg, unsigned long shares);
+
+extern int sched_group_set_latency(struct task_group *tg, int prio);
 
 #ifdef CONFIG_SMP
 extern void set_task_rq_fair(struct sched_entity *se,
