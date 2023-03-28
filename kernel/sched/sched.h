@@ -471,6 +471,9 @@ struct cfs_rq {
 	struct load_weight load;
 	unsigned int nr_running, h_nr_running;
 
+	s64 avg_vruntime;
+	u64 avg_load;
+
 	u64 exec_clock;
 	u64 min_vruntime;
 #ifndef CONFIG_64BIT
@@ -2303,6 +2306,7 @@ print_numa_stats(struct seq_file *m, int node, unsigned long tsf,
 	unsigned long tpf, unsigned long gsf, unsigned long gpf);
 #endif /* CONFIG_NUMA_BALANCING */
 #endif /* CONFIG_SCHED_DEBUG */
+extern u64 avg_vruntime(struct cfs_rq *cfs_rq);
 
 extern void init_cfs_rq(struct cfs_rq *cfs_rq);
 extern void init_rt_rq(struct rt_rq *rt_rq);
