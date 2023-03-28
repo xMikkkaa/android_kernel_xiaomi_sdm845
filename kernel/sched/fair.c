@@ -3758,7 +3758,7 @@ static inline int idle_balance(struct rq *rq)
 #endif /* CONFIG_SMP */
 
 static void
-place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
+place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
 	u64 vruntime = avg_vruntime(cfs_rq);
 	u64 vslice;
@@ -3797,15 +3797,51 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		vruntime -= lag;
 	}
 
-	se->vruntime = vruntime - lag;
+	/*
+	 * Base the deadline on the 'normal' EEVDF placement policy in an
+	 * attempt to not let the bonus crud below wreck things completely.
+	 */
+	se->deadline = vruntime;
 
-	if (sched_feat(PLACE_DEADLINE_INITIAL) && initial) {
-		se->vlag = vslice;
-		se->deadline = se->vruntime + se->vlag;
-	} else {
-		se->vlag = 0;
-		se->deadline = se->vruntime + vslice;
+	/*
+	 * The whole 'sleeper' bonus hack... :-/ This is strictly unfair.
+	 *
+	 * By giving a sleeping task a little boost, it becomes possible for a
+	 * 50% task to compete equally with a 100% task. That is, strictly fair
+	 * that setup would result in a 67% / 33% split. Sleeper bonus will
+	 * change that to 50% / 50%.
+	 *
+	 * This thing hurts my brain, because tasks leaving with negative lag
+	 * will move 'time' backward, so comparing against a historical
+	 * se->vruntime is dodgy as heck.
+	 */
+	if (sched_feat(PLACE_BONUS) &&
+	    (flags & ENQUEUE_WAKEUP) && !(flags & ENQUEUE_MIGRATED)) {
+		/*
+		 * If se->vruntime is ahead of vruntime, something dodgy
+		 * happened and we cannot give bonus due to not having valid
+		 * history.
+		 */
+		if ((s64)(se->vruntime - vruntime) < 0) {
+			vruntime -= se->slice/2;
+			vruntime = max_vruntime(se->vruntime, vruntime);
+		}
 	}
+
+	se->vruntime = vruntime;
+
+	/*
+	 * When joining the competition; the exisiting tasks will be,
+	 * on average, halfway through their slice, as such start tasks
+	 * off with half a slice to ease into the competition.
+	 */
+	if (sched_feat(PLACE_DEADLINE_INITIAL) && (flags & ENQUEUE_INITIAL))
+		vslice /= 2;
+
+	/*
+	 * EEVDF: vd_i = ve_i + r_i/w_i
+	 */
+	se->deadline += vslice;
 }
 
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq);
@@ -3841,7 +3877,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 * update_curr().
 	 */
 	if (curr)
-		place_entity(cfs_rq, se, 0);
+		place_entity(cfs_rq, se, flags);
 
 	update_curr(cfs_rq);
 
@@ -3862,7 +3898,7 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 * we can place the entity.
 	 */
 	if (!curr)
-		place_entity(cfs_rq, se, 0);
+		place_entity(cfs_rq, se, flags);
 
 	account_entity_enqueue(cfs_rq, se);
 
@@ -11471,7 +11507,7 @@ static void task_fork_fair(struct task_struct *p)
 	curr = cfs_rq->curr;
 	if (curr)
 		update_curr(cfs_rq);
-	place_entity(cfs_rq, se, 1);
+	place_entity(cfs_rq, se, ENQUEUE_INITIAL);
 	raw_spin_unlock(&rq->lock);
 }
 
