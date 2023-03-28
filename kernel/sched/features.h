@@ -11,6 +11,7 @@ SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)
  * sleep+wake cycles. EEVDF placement strategy #1, #2 if disabled.
  */
 SCHED_FEAT(PLACE_LAG, true)
+SCHED_FEAT(PLACE_DEADLINE_INITIAL, true)
 
 /*
  * Prefer to schedule the task we woke last (assuming it failed
@@ -112,3 +113,5 @@ SCHED_FEAT(FBT_STRICT_ORDER, false)
  */
 SCHED_FEAT(EAS_USE_NEED_IDLE, false)
 SCHED_FEAT(SCHEDTUNE_BOOST_HOLD_ALL, true)
+
+SCHED_FEAT(EEVDF, true)
