@@ -13,13 +13,6 @@ SCHED_FEAT(PLACE_DEADLINE_INITIAL, true)
 SCHED_FEAT(NEXT_BUDDY, true)
 
 /*
- * Prefer to schedule the task that ran last (when we did
- * wake-preempt) as that likely will touch the same data, increases
- * cache locality.
- */
-SCHED_FEAT(LAST_BUDDY, true)
-
-/*
  * skip buddy i.e task called yield() is always skipped and the
  * next entity is selected to run irrespective of the vruntime
  */
@@ -106,4 +99,3 @@ SCHED_FEAT(FBT_STRICT_ORDER, false)
 SCHED_FEAT(EAS_USE_NEED_IDLE, false)
 SCHED_FEAT(SCHEDTUNE_BOOST_HOLD_ALL, true)
 
-SCHED_FEAT(EEVDF, true)
