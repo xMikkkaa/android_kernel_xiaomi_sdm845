@@ -1586,6 +1586,8 @@ struct sched_entity {
 	 */
 	struct sched_avg	avg ____cacheline_aligned_in_smp;
 #endif
+	/* preemption offset in ns */
+	long			latency_offset;
 };
 
 struct sched_rt_entity {

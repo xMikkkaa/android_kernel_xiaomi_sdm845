@@ -797,6 +797,11 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = sched_prio_to_wmult[prio];
 }
 
+static void set_latency_offset(struct task_struct *p)
+{
+	p->se.latency_offset = calc_latency_offset(p->latency_prio - MAX_RT_PRIO);
+}
+
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
@@ -2430,7 +2435,10 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	reset_task_bore(p);
 #endif // CONFIG_SCHED_BORE
 
+	p->se.vruntime			= 0;
 	INIT_LIST_HEAD(&p->se.group_node);
+
+	set_latency_offset(p);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	p->se.cfs_rq			= NULL;
@@ -2630,6 +2638,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		set_load_weight(p);
 
 		p->latency_prio = NICE_TO_PRIO(0);
+		set_latency_offset(p);
 
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
@@ -4318,8 +4327,10 @@ static void __setscheduler_params(struct task_struct *p,
 static void __setscheduler_latency(struct task_struct *p,
 				   const struct sched_attr *attr)
 {
-	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE)
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
 		p->latency_prio = NICE_TO_PRIO(attr->sched_latency_nice);
+		set_latency_offset(p);
+	}
 }
 
 /* Actually do priority change: must hold pi & rq lock. */
