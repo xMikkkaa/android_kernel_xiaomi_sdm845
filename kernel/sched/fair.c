@@ -113,11 +113,11 @@ enum sched_tunable_scaling sysctl_sched_tunable_scaling
  * Minimal preemption granularity for CPU-bound tasks:
  * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-unsigned int sysctl_sched_min_granularity = 500000ULL;
-unsigned int normalized_sysctl_sched_min_granularity = 500000ULL;
+unsigned int sysctl_sched_base_slice = 500000ULL;
+unsigned int normalized_sysctl_sched_base_slice = 500000ULL;
 
 /*
- * is kept at sysctl_sched_latency / sysctl_sched_min_granularity
+ * is kept at sysctl_sched_latency / sysctl_sched_base_slice
  */
 static unsigned int sched_nr_latency = 6;
 
@@ -220,7 +220,7 @@ static void update_sysctl(void)
 
 #define SET_SYSCTL(name) \
 	(sysctl_##name = (factor) * normalized_sysctl_##name)
-	SET_SYSCTL(sched_min_granularity);
+	SET_SYSCTL(sched_base_slice);
 #undef SET_SYSCTL
 }
 
@@ -853,7 +853,7 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 
 #define WRT_SYSCTL(name) \
 	(normalized_sysctl_##name = sysctl_##name / (factor))
-	WRT_SYSCTL(sched_min_granularity);
+	WRT_SYSCTL(sched_base_slice);
 #undef WRT_SYSCTL
 
 	return 0;
@@ -863,7 +863,7 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 long calc_latency_offset(int prio)
 {
 	u32 weight = sched_prio_to_weight[prio];
-	u64 base = sysctl_sched_min_granularity;
+	u64 base = sysctl_sched_base_slice;
 
 	return div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
 }
@@ -3764,7 +3764,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 	u64 vruntime = avg_vruntime(cfs_rq);
 	s64 lag = 0;
 
-	se->slice = sysctl_sched_min_granularity;
+	se->slice = sysctl_sched_base_slice;
 
 	if (sched_feat(PLACE_LAG) && cfs_rq->nr_running) {
 		struct sched_entity *curr = cfs_rq->curr;
@@ -3944,7 +3944,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	}
 }
 
-		if (delta_exec < sysctl_sched_min_granularity)
+		if (delta_exec < sysctl_sched_base_slice)
 			return;
 
 		se = __pick_first_entity(cfs_rq);
@@ -3977,7 +3977,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 * narrow margin doesn't have to wait for a full slice.
 	 * This also mitigates buddy induced latencies under load.
 	 */
-	if (delta_exec < sysctl_sched_min_granularity)
+	if (delta_exec < sysctl_sched_base_slice)
 		return;
 
 	se = __pick_first_entity(cfs_rq);
