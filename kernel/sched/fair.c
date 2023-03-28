@@ -567,6 +567,7 @@ avg_vruntime_add(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	s64 key = entity_key(cfs_rq, se);
 
 	cfs_rq->avg_vruntime += key * weight;
+	cfs_rq->avg_slice += se->slice * weight;
 	cfs_rq->avg_load += weight;
 }
 
@@ -577,6 +578,7 @@ avg_vruntime_sub(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	s64 key = entity_key(cfs_rq, se);
 
 	cfs_rq->avg_vruntime -= key * weight;
+	cfs_rq->avg_slice -= se->slice * weight;
 	cfs_rq->avg_load -= weight;
 }
 
@@ -3759,15 +3761,29 @@ static void
 place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 {
 	u64 vruntime = avg_vruntime(cfs_rq);
+	u64 vslice;
 	s64 lag = 0;
 
 	se->slice = sysctl_sched_base_slice;
+	vslice = calc_delta_fair(se->slice, se);
 
 	if (sched_feat(PLACE_LAG) && cfs_rq->nr_running) {
 		struct sched_entity *curr = cfs_rq->curr;
 		unsigned long load;
 
 		lag = se->vlag;
+
+		/*
+		 * For latency sensitive tasks; those that have a shorter than
+		 * average slice and do not fully consume the slice, transition
+		 * to EEVDF placement strategy #2.
+		 */
+		if (sched_feat(PLACE_FUDGE) &&
+		    cfs_rq->avg_slice > se->slice * cfs_rq->avg_load) {
+			lag += vslice;
+			if (lag > 0)
+				lag = 0;
+		}
 
 		load = cfs_rq->avg_load;
 		if (curr && curr->on_rq)
@@ -3784,11 +3800,11 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 	se->vruntime = vruntime - lag;
 
 	if (sched_feat(PLACE_DEADLINE_INITIAL) && initial) {
-		se->vlag = calc_delta_fair(se->slice, se);
+		se->vlag = vslice;
 		se->deadline = se->vruntime + se->vlag;
 	} else {
 		se->vlag = 0;
-		se->deadline = se->vruntime + calc_delta_fair(se->slice, se);
+		se->deadline = se->vruntime + vslice;
 	}
 }
 
