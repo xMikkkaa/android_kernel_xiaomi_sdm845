@@ -2629,6 +2629,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->prio = p->normal_prio = __normal_prio(p);
 		set_load_weight(p);
 
+		p->latency_prio = NICE_TO_PRIO(0);
+
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
 		 * fulfilled its duty:
@@ -4287,7 +4289,7 @@ __setparam_dl(struct task_struct *p, const struct sched_attr *attr)
 #define SETPARAM_POLICY	-1
 
 static void __setscheduler_params(struct task_struct *p,
-		const struct sched_attr *attr)
+				  const struct sched_attr *attr)
 {
 	int policy = attr->sched_policy;
 
@@ -4311,6 +4313,13 @@ static void __setscheduler_params(struct task_struct *p,
 	p->rt_priority = attr->sched_priority;
 	p->normal_prio = normal_prio(p);
 	set_load_weight(p);
+}
+
+static void __setscheduler_latency(struct task_struct *p,
+				   const struct sched_attr *attr)
+{
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE)
+		p->latency_prio = NICE_TO_PRIO(attr->sched_latency_nice);
 }
 
 /* Actually do priority change: must hold pi & rq lock. */
@@ -4514,6 +4523,13 @@ recheck:
 			return -EPERM;
 	}
 
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
+		if (attr->sched_latency_nice > MAX_NICE)
+			return -EINVAL;
+		if (attr->sched_latency_nice < MIN_NICE)
+			return -EINVAL;
+	}
+
 	if (user) {
 		retval = security_task_setscheduler(p);
 		if (retval)
@@ -4547,6 +4563,9 @@ recheck:
 		if (rt_policy(policy) && attr->sched_priority != p->rt_priority)
 			goto change;
 		if (dl_policy(policy) && dl_param_changed(p, attr))
+			goto change;
+		if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE &&
+		    attr->sched_latency_nice != PRIO_TO_NICE(p->latency_prio))
 			goto change;
 
 		p->sched_reset_on_fork = reset_on_fork;
@@ -4770,6 +4789,10 @@ static int sched_copy_attr(struct sched_attr __user *uattr,
 
 	if (size < SCHED_ATTR_SIZE_VER0)
 		goto err_size;
+
+	if ((attr->sched_flags & SCHED_FLAG_LATENCY_NICE) &&
+	    size < SCHED_ATTR_SIZE_VER1)
+		return -EINVAL;
 
 	/*
 	 * If we're handed a bigger struct than we know of,
@@ -5021,6 +5044,8 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		attr.sched_priority = p->rt_priority;
 	else
 		attr.sched_nice = task_nice(p);
+
+	attr.sched_latency_nice = PRIO_TO_NICE(p->latency_prio);
 
 	rcu_read_unlock();
 
