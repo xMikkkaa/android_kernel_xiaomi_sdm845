@@ -816,16 +816,6 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 	return rb_entry(left, struct sched_entity, run_node);
 }
 
-static struct sched_entity *__pick_next_entity(struct sched_entity *se)
-{
-	struct rb_node *next = rb_next(&se->run_node);
-
-	if (!next)
-		return NULL;
-
-	return rb_entry(next, struct sched_entity, run_node);
-}
-
 #ifdef CONFIG_SCHED_DEBUG
 struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq)
 {
@@ -860,12 +850,19 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 }
 #endif
 
-long calc_latency_offset(int prio)
+void set_latency_fair(struct sched_entity *se, int prio)
 {
 	u32 weight = sched_prio_to_weight[prio];
 	u64 base = sysctl_sched_base_slice;
 
-	return div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
+	/*
+	 * For EEVDF the virtual time slope is determined by w_i (iow.
+	 * nice) while the request time r_i is determined by
+	 * latency-nice.
+	 *
+	 * Smaller request gets better latency.
+	 */
+	se->slice = div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
 }
 
 /*
@@ -4030,20 +4027,6 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
  * 3) pick the "last" process, for cache locality
  * 4) do not run the "skip" process, if something else is available
  */
-static struct sched_entity *pick_cfs(struct cfs_rq *cfs_rq, struct sched_entity *curr)
-{
-	struct sched_entity *left = __pick_first_entity(cfs_rq);
-
-	/*
-	 * If curr is set we have to see if its left of the leftmost entity
-	 * still in the tree, provided there was anything in the tree at all.
-	 */
-	if (!left || (curr && entity_before(curr, left)))
-		left = curr;
-
-	return left;
-}
-
 /*
  * Earliest Eligible Virtual Deadline First
  *
@@ -11816,7 +11799,7 @@ void init_tg_cfs_entry(struct task_group *tg, struct cfs_rq *cfs_rq,
 
 	se->my_q = cfs_rq;
 
-	se->latency_offset = calc_latency_offset(tg->latency_prio - MAX_RT_PRIO);
+	set_latency_fair(se, tg->latency_prio - MAX_RT_PRIO);
 
 	/* guarantee group entities always have weight */
 	update_load_set(&se->load, NICE_0_LOAD);
@@ -11867,7 +11850,6 @@ done:
 
 int sched_group_set_latency(struct task_group *tg, int prio)
 {
-	long latency_offset;
 	int i;
 
 	if (tg == &root_task_group)
@@ -11881,13 +11863,9 @@ int sched_group_set_latency(struct task_group *tg, int prio)
 	}
 
 	tg->latency_prio = prio;
-	latency_offset = calc_latency_offset(prio - MAX_RT_PRIO);
 
-	for_each_possible_cpu(i) {
-		struct sched_entity *se = tg->se[i];
-
-		WRITE_ONCE(se->latency_offset, latency_offset);
-	}
+	for_each_possible_cpu(i)
+		set_latency_fair(tg->se[i], prio - MAX_RT_PRIO);
 
 	mutex_unlock(&shares_mutex);
 	return 0;
