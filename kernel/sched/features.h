@@ -7,6 +7,8 @@ SCHED_FEAT(PLACE_FUDGE, true)
 SCHED_FEAT(PLACE_DEADLINE_INITIAL, true)
 SCHED_FEAT(PLACE_BONUS, false)
 
+SCHED_FEAT(MINIMAL_VA, false)
+
 /*
  * Prefer to schedule the task we woke last (assuming it failed
  * wakeup-preemption), since its likely going to consume data we

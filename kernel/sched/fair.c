@@ -689,31 +689,44 @@ static u64 __update_min_vruntime(struct cfs_rq *cfs_rq, u64 vruntime)
 
 static void update_min_vruntime(struct cfs_rq *cfs_rq)
 {
-	struct sched_entity *se = __pick_first_entity(cfs_rq);
-	struct sched_entity *curr = cfs_rq->curr;
+	if (sched_feat(MINIMAL_VA)) {
+		u64 vruntime = avg_vruntime(cfs_rq);
+		s64 delta = (s64)(vruntime - cfs_rq->min_vruntime);
 
-	u64 vruntime = cfs_rq->min_vruntime;
+		avg_vruntime_update(cfs_rq, delta);
 
-	if (curr) {
-		if (curr->on_rq)
-			vruntime = curr->vruntime;
-		else
-			curr = NULL;
-	}
-
-	if (se) {
-		if (!curr)
-			vruntime = se->vruntime;
-		else
-			vruntime = min_vruntime(vruntime, se->vruntime);
-	}
-
-	/* ensure we never gain time by being placed backwards. */
-	cfs_rq->min_vruntime = max_vruntime(cfs_rq->min_vruntime, vruntime);
+		cfs_rq->min_vruntime = vruntime;
 #ifndef CONFIG_64BIT
-	smp_wmb();
-	cfs_rq->min_vruntime_copy = cfs_rq->min_vruntime;
+		smp_wmb();
+		cfs_rq->min_vruntime_copy = cfs_rq->min_vruntime;
 #endif
+	} else {
+		struct sched_entity *se = __pick_first_entity(cfs_rq);
+		struct sched_entity *curr = cfs_rq->curr;
+
+		u64 vruntime = cfs_rq->min_vruntime;
+
+		if (curr) {
+			if (curr->on_rq)
+				vruntime = curr->vruntime;
+			else
+				curr = NULL;
+		}
+
+		if (se) {
+			if (!curr)
+				vruntime = se->vruntime;
+			else
+				vruntime = min_vruntime(vruntime, se->vruntime);
+		}
+
+		/* ensure we never gain time by being placed backwards. */
+		cfs_rq->min_vruntime = max_vruntime(cfs_rq->min_vruntime, vruntime);
+#ifndef CONFIG_64BIT
+		smp_wmb();
+		cfs_rq->min_vruntime_copy = cfs_rq->min_vruntime;
+#endif
+	}
 }
 
 /*
