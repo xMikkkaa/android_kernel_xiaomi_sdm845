@@ -3859,25 +3859,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		vruntime -= lag;
 	}
 
-	if (sched_feat(FAIR_SLEEPERS)) {
-		/* sleeps up to a single latency don't count. */
-		if (!initial) {
-			unsigned long thresh = sysctl_sched_latency;
-
-			/*
-			 * Halve their sleep time's effect, to allow
-			 * for a gentler effect of sleepers:
-			 */
-			if (sched_feat(GENTLE_FAIR_SLEEPERS))
-				thresh >>= 1;
-
-			vruntime -= thresh;
-		}
-
-		vruntime = max_vruntime(se->vruntime, vruntime);
-	}
-
-	se->vruntime = vruntime;
+	se->vruntime = vruntime - lag;
 
 	if (sched_feat(PLACE_DEADLINE_INITIAL) && initial) {
 		se->vlag = calc_delta_fair(se->slice, se);
