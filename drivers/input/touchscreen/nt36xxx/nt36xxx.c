@@ -1076,6 +1076,8 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 	int32_t i = 0;
 	int32_t finger_cnt = 0;
 
+	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
+
 	pm_qos_update_request(&ts->pm_qos_req, 100);
 
 #if WAKEUP_GESTURE
@@ -1083,8 +1085,6 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 		pm_wakeup_event(&ts->input_dev->dev, 5000);
 	}
 #endif
-
-	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 

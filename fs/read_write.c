@@ -4,7 +4,7 @@
  *  Copyright (C) 1991, 1992  Linus Torvalds
  */
 
-#include <linux/slab.h> 
+#include <linux/slab.h>
 #include <linux/stat.h>
 #include <linux/fcntl.h>
 #include <linux/file.h>
@@ -444,13 +444,22 @@ static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, lo
 	return ret;
 }
 
-extern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr,
-			size_t *count_ptr, loff_t **pos);
+#ifdef CONFIG_KSU
+#if CONFIG_KSU == 'y'
+extern bool ksu_vfs_read_hook __read_mostly;
+extern int ksu_handle_vfs_read(struct file **file_ptr, char __user **buf_ptr, size_t *count_ptr, loff_t **pos);
+#endif
+#endif
 
 ssize_t __vfs_read(struct file *file, char __user *buf, size_t count,
 		   loff_t *pos)
 {
-	ksu_handle_vfs_read(&file, &buf, &count, &pos);
+  #ifdef CONFIG_KSU
+	  #if CONFIG_KSU == 'y'
+     	  if (unlikely(ksu_vfs_read_hook))
+          ksu_handle_vfs_read(&file, &buf, &count, &pos);
+      #endif
+	#endif
 
 	if (file->f_op->read)
 		return file->f_op->read(file, buf, count, pos);
@@ -650,7 +659,7 @@ SYSCALL_DEFINE4(pwrite64, unsigned int, fd, const char __user *, buf,
 	f = fdget(fd);
 	if (f.file) {
 		ret = -ESPIPE;
-		if (f.file->f_mode & FMODE_PWRITE)  
+		if (f.file->f_mode & FMODE_PWRITE)
 			ret = vfs_write(f.file, buf, count, &pos);
 		fdput(f);
 	}

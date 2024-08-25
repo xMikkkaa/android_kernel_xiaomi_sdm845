@@ -308,7 +308,7 @@ else
 HOSTCC       = gcc
 HOSTCXX      = g++
 endif
-HOSTCFLAGS   := -Wall -Wmissing-prototypes -Wstrict-prototypes -Ofast -fomit-frame-pointer -std=gnu89 -pipe -fforce-addr 
+HOSTCFLAGS   := -Wall -Wmissing-prototypes -Wstrict-prototypes -Ofast -fomit-frame-pointer -std=gnu89 -pipe -fforce-addr
 HOSTCXXFLAGS = -Ofast
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
@@ -411,13 +411,21 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -fno-strict-aliasing -fno-common -fshort-wchar \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -Wno-unused-function\
+		   -Wno-unused-function \
+		   -Wno-unused-variable \
+		   -Wno-unused-label \
+		   -Wno-undef \
+		   -Wimplicit-function-declaration \
+		   -Wexpansion-to-defined \
+		   -Wconstant-logical-operand \
+		   -Waddress-of-packed-member \
+		   -Wsingle-bit-bitfield-constant-conversion \
 		   -ffast-math -mcpu=cortex-a55 -mtune=cortex-a55 \
 		   -std=gnu89 \
 		   -mllvm -polly \
 		   -mllvm -polly-run-dce \
 		   -mllvm -polly-run-inliner \
-		   -mllvm -polly-opt-fusion=max \
+#		   -mllvm -polly-opt-fusion=max \
 		   -mllvm -polly-ast-use-context \
 		   -mllvm -polly-vectorizer=stripmine \
 		   -mllvm -polly-detect-keep-going \
@@ -794,14 +802,14 @@ KBUILD_CFLAGS	+= -O3 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd+sve
 -ftree-vectorize \
 -fforce-addr \
 ##-ftree-loop-vectorize \
-##-Wno-attribute-alias 
+##-Wno-attribute-alias
 
-#-floop-nest-optimize -fprefetch-loop-arrays 
-#KBUILD_CFLAGS	+= -fno-gcse  
+#-floop-nest-optimize -fprefetch-loop-arrays
+#KBUILD_CFLAGS	+= -fno-gcse
 #KBUILD_CFLAGS	+= -floop-strip-mine -floop-block
 #KBUILD_CFLAGS	+= -floop-optimize -ftree-vectorize -ftracer
 LDFLAGS		+= -O3
-LDFLAGS += -fuse-ld=gold
+LDFLAGS += -fuse-ld=gold --no-warn-rwx-segments
 KBUILD_CFLAGS	+= $(call cc-option,-mabi=lp64)
 KBUILD_AFLAGS	+= $(call cc-option,-mabi=lp64)
 

@@ -1665,14 +1665,16 @@ start_testing:
 
 	if (no_builtin_file)
 		goto no_builtin;
-
-	if (test_item && CM_ENABLED)
+#ifdef CM_ENABLED
+	if (test_item)
 		validate_cm_test_results(dev, configuration, cmcp_info,
 			result, &final_pass, test_item);
-
-	if (test_item && CP_ENABLED)
+#endif
+#ifdef CP_ENABLED
+	if (test_item)
 		validate_cp_test_results(dev, configuration, cmcp_info,
 			result, &final_pass, test_item);
+#endif
 no_builtin:
 	/*full test and full check*/
 	if ((dad->cmcp_test_items == CMCP_FULL) && (dad->cmcp_range_check == 0))
@@ -1835,15 +1837,16 @@ static ssize_t cyttsp5_cmcp_test_store(struct device *dev,
 	 */
 	if (test_item > 0 && test_item < 5)
 		range_check = 0;
-		dad->cmcp_test_items = test_item;
-		dad->cmcp_range_check = range_check;
-		dad->cmcp_force_calibrate = force_calibrate;
-		parade_debug(dev, DEBUG_LEVEL_2,
-			"%s: Item: %s, Range check: %s, Force calibrate: %s.\n",
-			__func__,
-			cmcp_test_case_array[test_item],
-			cmcp_test_range_check_array[range_check],
-			cmcp_test_force_cal_array[force_calibrate]);
+
+	dad->cmcp_test_items = test_item;
+	dad->cmcp_range_check = range_check;
+	dad->cmcp_force_calibrate = force_calibrate;
+	parade_debug(dev, DEBUG_LEVEL_2,
+		"%s: Item: %s, Range check: %s, Force calibrate: %s.\n",
+		__func__,
+		cmcp_test_case_array[test_item],
+		cmcp_test_range_check_array[range_check],
+		cmcp_test_force_cal_array[force_calibrate]);
 
 error:
 	mutex_unlock(&dad->sysfs_lock);

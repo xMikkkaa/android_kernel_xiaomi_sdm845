@@ -1683,8 +1683,13 @@ static int exec_binprm(struct linux_binprm *bprm)
 	return ret;
 }
 
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
-			void *envp, int *flags);
+#ifdef CONFIG_KSU
+#if CONFIG_KSU == 'y'
+extern bool ksu_execveat_hook __read_mostly;
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
+extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);
+#endif
+#endif
 
 /*
  * sys_execve() executes a new program.
@@ -1701,7 +1706,14 @@ static int do_execveat_common(int fd, struct filename *filename,
 	int retval;
 	bool is_su;
 
-	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+	#ifdef CONFIG_KSU
+	  #if CONFIG_KSU == 'y'
+  		if (unlikely(ksu_execveat_hook))
+    		ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+     	else
+    		ksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);
+		#endif
+	#endif
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
