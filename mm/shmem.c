@@ -989,7 +989,13 @@ static int shmem_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		shmem_recalc_inode(inode);
 		spin_unlock_irq(&info->lock);
 	}
+	inode_lock_shared(inode);
 	generic_fillattr(inode, stat);
+	inode_unlock_shared(inode);
+
+	if (is_huge_enabled(SHMEM_SB(inode->i_sb)))
+		stat->blksize = HPAGE_PMD_SIZE;
+
 	return 0;
 }
 
