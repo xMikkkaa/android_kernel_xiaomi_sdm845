@@ -2556,6 +2556,10 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	sched_fork_bore(p);
 #endif
 
+#ifdef CONFIG_SCHED_BORE
+	sched_fork_bore(p);
+#endif
+
 	INIT_LIST_HEAD(&p->se.group_node);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
