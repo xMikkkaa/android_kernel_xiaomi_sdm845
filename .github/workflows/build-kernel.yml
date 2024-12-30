@@ -20,10 +20,11 @@ jobs:
       - name: Setup Proton Clang
         run: |
           cd $GITHUB_WORKSPACE
-          git clone https://github.com/kdrag0n/proton-clang.git --depth 1
+        #git clone https://github.com/kdrag0n/proton-clang.git --depth 1
       - name: Build kernel
         run: |
-          cd $GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845
+          ls
+          cd /$GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845
           ls
           ./compile.sh
       - name: Zip output
