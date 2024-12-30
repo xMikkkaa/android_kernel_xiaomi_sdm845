@@ -1,0 +1,41 @@
+name: build-kernel
+on:
+  workflow_dispatch:
+jobs:
+  build-ksu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+      #- name: Setup build environment
+      #  run: curl https://raw.githubusercontent.com/akhilnarang/scripts/master/setup/android_build_env.sh | bash -
+      - name: Setup build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git ccache pngcrush schedtool maven lib32ncurses5-dev xsltproc libxml2-utils squashfs-tools lzop flex build-essential bc libssl-dev libswitch-perl libxml-simple-perl zip unzip g++-multilib bison gperf zlib1g-dev automake device-tree-compiler
+          sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
+          sudo chmod a+rx /usr/local/bin/repo
+      - name: Setup Proton Clang
+        run: |
+          cd $GITHUB_WORKSPACE
+          git clone https://github.com/kdrag0n/proton-clang.git --depth 1
+      - name: Build kernel
+        run: |
+          cd $GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845
+          ls
+          ./compile.sh
+      - name: Zip output
+        run: |
+          cd $GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845/out
+          zip -r9 "../kernel.zip" * -x .git README.md *placeholder
+      - name: Generate release tag
+        id: tag
+        run: echo "release_tag=AOSPA_KSU_GKI_$(date +'%Y.%m.%d')" >> "$GITHUB_OUTPUT"
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          files: |
+            kernel.zip
