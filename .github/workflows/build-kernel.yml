@@ -30,8 +30,8 @@ jobs:
           ./compile.sh
       - name: Zip output
         run: |
-          cd $GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845/out
-          zip -r9 "../kernel.zip" * -x .git README.md *placeholder
+          cd $GITHUB_WORKSPACE/NGK_android_kernel_xiaomi_sdm845/out/outputs/beryllium
+          zip -r9 "$GITHUB_WORKSPACE/kernel.zip" * -x .git README.md *placeholder
       - name: Generate release tag
         id: tag
         run: echo "release_tag=AOSPA_KSU_GKI_$(date +'%Y.%m.%d')" >> "$GITHUB_OUTPUT"
