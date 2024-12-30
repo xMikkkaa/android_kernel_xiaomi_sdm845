@@ -10,7 +10,7 @@ DEFCONFIG=nogravity_defconfig
 #DEFCONFIG=beryllium_defconfig
 COMPILER=clang
 LINKER=""
-COMPILERDIR="/media/pierre/Expension/Android/PocophoneF1/Kernels/Proton-Clang"
+COMPILERDIR="$(pwd)/proton-clang"
 
 # Outputs
 mkdir out/outputs
