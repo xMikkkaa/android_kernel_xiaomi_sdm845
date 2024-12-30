@@ -10,7 +10,7 @@ DEFCONFIG=nogravity_defconfig
 #DEFCONFIG=beryllium_defconfig
 COMPILER=clang
 LINKER=""
-COMPILERDIR="$(pwd)/proton-clang"
+COMPILERDIR="$(pwd)/../proton-clang"
 
 # Outputs
 mkdir -p out/outputs
