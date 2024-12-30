@@ -9,7 +9,7 @@ red='\033[0;31m'
 nocol='\033[0m'
 
 rmdir KernelSU
-curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs-4.9/kernel/setup.sh" | bash -
 
 # Cleanup
 rm -rf out/outputs/*
