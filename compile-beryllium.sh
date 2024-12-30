@@ -13,12 +13,12 @@ LINKER=""
 COMPILERDIR="$(pwd)/proton-clang"
 
 # Outputs
-mkdir out/outputs
-mkdir out/outputs/${PHONE}
-mkdir out/outputs/${PHONE}/9.1.24-SE
-mkdir out/outputs/${PHONE}/9.1.24-NSE
-mkdir out/outputs/${PHONE}/10.3.7-SE
-mkdir out/outputs/${PHONE}/10.3.7-NSE
+mkdir -p out/outputs
+mkdir -p out/outputs/${PHONE}
+mkdir -p out/outputs/${PHONE}/9.1.24-SE
+mkdir -p out/outputs/${PHONE}/9.1.24-NSE
+mkdir -p out/outputs/${PHONE}/10.3.7-SE
+mkdir -p out/outputs/${PHONE}/10.3.7-NSE
 
 # Export shits
 export KBUILD_BUILD_USER=Pierre2324
