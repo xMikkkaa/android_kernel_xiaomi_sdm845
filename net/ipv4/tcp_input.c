@@ -97,6 +97,7 @@ int sysctl_tcp_min_rtt_wlen __read_mostly = 300;
 int sysctl_tcp_moderate_rcvbuf __read_mostly = 1;
 int sysctl_tcp_early_retrans __read_mostly = 3;
 int sysctl_tcp_invalid_ratelimit __read_mostly = HZ/2;
+int sysctl_tcp_default_init_rwnd __read_mostly = TCP_INIT_CWND * 2;
 
 #define FLAG_DATA		0x01 /* Incoming frame contained data.		*/
 #define FLAG_WIN_UPDATE		0x02 /* Incoming ACK was a window update.	*/
@@ -422,7 +423,7 @@ static void tcp_fixup_rcvbuf(struct sock *sk)
 	int rcvmem;
 
 	rcvmem = 2 * SKB_TRUESIZE(mss + MAX_TCP_HEADER) *
-		 tcp_default_init_rwnd(sock_net(sk), mss);
+		 tcp_default_init_rwnd(mss);
 
 	/* Dynamic Right Sizing (DRS) has 2 to 3 RTT latency
 	 * Allow enough cushion so that sender is not limited by our window
@@ -5653,13 +5654,8 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 		icsk->icsk_af_ops->sk_rx_dst_set(sk, skb);
 		security_inet_conn_established(sk, skb);
 	}
-
-	/* Make sure socket is routed, for correct metrics.  */
-	icsk->icsk_af_ops->rebuild_header(sk);
-
-	tcp_init_metrics(sk);
-	tcp_call_bpf(sk, BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB);
-	tcp_init_congestion_control(sk);
+	
+	tcp_init_transfer(sk, BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB);
 
 	/* Prevent spurious tcp_cwnd_restart() on first data
 	 * packet.
@@ -6067,12 +6063,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 			inet_csk(sk)->icsk_retransmits = 0;
 			reqsk_fastopen_remove(sk, req, false);
 		} else {
-			/* Make sure socket is routed, for correct metrics. */
-			icsk->icsk_af_ops->rebuild_header(sk);
-			tcp_call_bpf(sk, BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB);
-			tcp_init_congestion_control(sk);
-
-			tcp_mtup_init(sk);
+		    tcp_init_transfer(sk, BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB);
 			tp->copied_seq = tp->rcv_nxt;
 			tcp_init_buffer_space(sk);
 		}
