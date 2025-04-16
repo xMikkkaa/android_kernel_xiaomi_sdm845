@@ -1,0 +1,50 @@
+name: Build NGK Kernel with KernelSU Next
+
+on:
+  push:
+    branches:
+      - t-caf-latest
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile Beryllium Kernel
+    runs-on: ubuntu-latest
+
+    env:
+      DEFCONFIG: beryllium_defconfig
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev make libc6-dev libncurses5-dev \
+              gcc-aarch64-linux-gnu git python3 python-is-python3
+
+      - name: Install KernelSU Next
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+
+      - name: Clone Toolchain
+        run: |
+          git clone --depth=1 https://github.com/Neutron-Toolchains/clang-llvm.git clang
+
+      - name: Compile Kernel
+        run: |
+          export PATH=$PWD/clang/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make O=out $DEFCONFIG
+          make -j$(nproc) O=out \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+      - name: Upload Kernel Image
+        uses: actions/upload-artifact@v3
+        with:
+          name: Image.gz-dtb
+          path: out/arch/arm64/boot/Image.gz-dtb
