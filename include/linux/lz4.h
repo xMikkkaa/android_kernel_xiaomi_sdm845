@@ -5,7 +5,6 @@
 #define __LINUX_LZ4_H__
 
 #include "../../lib/lz4/lz4.h"
-#include "../../lib/lz4/lz4hc.h"
 
 #define LZ4_MEM_COMPRESS	LZ4_STREAM_MINSIZE
 #define LZ4HC_MEM_COMPRESS	LZ4_STREAMHC_MINSIZE
