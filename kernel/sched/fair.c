@@ -755,7 +755,6 @@ static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	return calc_delta_fair(sched_slice(cfs_rq, se), se);
 }
 #ifdef CONFIG_SCHED_BORE
-uint __read_mostly sched_bore                   = 1;
 uint __read_mostly sched_burst_smoothness_long  = 1;
 uint __read_mostly sched_burst_smoothness_short = 0;
 uint __read_mostly sched_burst_fork_atavistic   = 2;
