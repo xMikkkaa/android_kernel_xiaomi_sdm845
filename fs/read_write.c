@@ -456,7 +456,7 @@ ssize_t __vfs_read(struct file *file, char __user *buf, size_t count,
 }
 EXPORT_SYMBOL(__vfs_read);
 
-ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
+ssize_t noinline vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
 
@@ -581,10 +581,27 @@ static inline void file_pos_write(struct file *file, loff_t pos)
 		file->f_pos = pos;
 }
 
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_is_init_rc_hook_enabled;
+extern __attribute__((cold)) void ksu_handle_sys_read(unsigned int fd);
+
+static noinline void susfs_ksu_handle_sys_read_helper(unsigned int fd)
+{
+	if (static_branch_unlikely(&ksu_is_init_rc_hook_enabled))
+		ksu_handle_sys_read(fd);
+}
+#endif
+
 SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 {
-	struct fd f = fdget_pos(fd);
+	struct fd f;
 	ssize_t ret = -EBADF;
+
+#ifdef CONFIG_KSU_SUSFS
+	susfs_ksu_handle_sys_read_helper(fd);
+#endif
+
+	f = fdget_pos(fd);
 
 	if (f.file) {
 		loff_t pos = file_pos_read(f.file);
