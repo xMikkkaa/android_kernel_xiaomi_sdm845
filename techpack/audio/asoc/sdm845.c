@@ -42,6 +42,14 @@
 #include <linux/regulator/consumer.h>
 #include <soc/qcom/socinfo.h>
 
+#ifndef CONFIG_SND_SOC_WCD934X
+/* Bypass sisa fungsi audio untuk build tanpa IC WCD934X (Pribadi) */
+#define msm_cdc_pinctrl_select_active_state(...) (0)
+#define msm_cdc_pinctrl_select_sleep_state(...) (0)
+#define tavil_cdc_mclk_enable(...) (0)
+#define tavil_cdc_mclk_tx_enable(...) (0)
+#endif
+
 #define DRV_NAME "sdm845-asoc-snd"
 
 #define __CHIPSET__ "SDM845 "
@@ -4198,11 +4206,13 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+#ifdef CONFIG_SND_SOC_WCD934X
 	struct snd_soc_component *aux_comp;
 	struct snd_card *card;
 	struct snd_info_entry *entry;
 	struct msm_asoc_mach_data *pdata =
 				snd_soc_card_get_drvdata(rtd->card);
+#endif
 
 	/* Codec SLIMBUS configuration
 	 * RX1, RX2, RX3, RX4, RX5, RX6, RX7, RX8
@@ -4283,6 +4293,7 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
 				    tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
 
+#ifdef CONFIG_SND_SOC_WCD934X
 	msm_codec_fn.get_afe_config_fn = tavil_get_afe_config;
 
 	ret = msm_adsp_power_up_config(codec, rtd->card->snd_card);
@@ -4337,6 +4348,12 @@ done:
 
 err:
 	return ret;
+#else
+	msm_codec_fn.get_afe_config_fn = NULL;
+	(void)config_data;
+	pr_info("%s: Audio Codec WCD934X dinonaktifkan dari defconfig\n", __func__);
+	return 0;
+#endif
 }
 
 static int msm_wcn_init(struct snd_soc_pcm_runtime *rtd)
