@@ -84,6 +84,10 @@
 #include <linux/devfreq_boost.h>
 #include <linux/scs.h>
 
+#ifdef CONFIG_SCHED_BORE
+#include <linux/sched/bore.h>
+#endif /* CONFIG_SCHED_BORE */
+
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/uaccess.h>
@@ -1921,6 +1925,10 @@ static __latent_entropy struct task_struct *copy_process(
 	 */
 
 	p->start_time = ktime_get_ns();
+#ifdef CONFIG_SCHED_BORE
+	if (likely(p->pid))
+		task_fork_bore(p, current, clone_flags, p->start_time);
+#endif /* CONFIG_SCHED_BORE */
 	p->real_start_time = ktime_get_boot_ns();
 
 	/*
@@ -1984,7 +1992,11 @@ static __latent_entropy struct task_struct *copy_process(
 
 			p->signal->leader_pid = pid;
 			p->signal->tty = tty_kref_get(current->signal->tty);
+#ifdef CONFIG_SCHED_BORE
+			list_add_tail_rcu(&p->sibling, &p->real_parent->children);
+#else /* !CONFIG_SCHED_BORE */
 			list_add_tail(&p->sibling, &p->real_parent->children);
+#endif /* CONFIG_SCHED_BORE */
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
 			attach_pid(p, PIDTYPE_PGID);
 			attach_pid(p, PIDTYPE_SID);

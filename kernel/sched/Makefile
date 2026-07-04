@@ -22,6 +22,7 @@ obj-$(CONFIG_SMP) += cpupri.o cpudeadline.o energy.o sched_avg.o
 obj-$(CONFIG_SCHED_WALT) += walt.o boost.o
 obj-$(CONFIG_SCHED_AUTOGROUP) += auto_group.o
 obj-$(CONFIG_SCHEDSTATS) += stats.o
+obj-$(CONFIG_SCHED_BORE) += bore.o
 obj-$(CONFIG_SCHED_DEBUG) += debug.o
 obj-$(CONFIG_SCHED_TUNE) += tune.o
 obj-$(CONFIG_CGROUP_CPUACCT) += cpuacct.o
