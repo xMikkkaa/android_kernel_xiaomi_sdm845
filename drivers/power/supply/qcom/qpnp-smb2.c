@@ -2847,6 +2847,50 @@ static void smb2_create_debugfs(struct smb2 *chip)
 
 #endif
 
+#include <linux/kobject.h>
+
+static struct smb_charger *global_smb_chg = NULL;
+static int bypass_charging_val = 0;
+
+static ssize_t bypass_charging_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", bypass_charging_val);
+}
+
+static ssize_t bypass_charging_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int val;
+	if (sscanf(buf, "%d", &val) == 1) {
+		bypass_charging_val = !!val; /* 1 = bypass on (charging disabled), 0 = bypass off (normal) */
+		if (global_smb_chg && global_smb_chg->chg_disable_votable) {
+			vote(global_smb_chg->chg_disable_votable, "BYPASS_CHARGE_VOTER", bypass_charging_val, 0);
+		}
+	}
+	return count;
+}
+
+static struct kobj_attribute bypass_charging_attr = __ATTR(bypass_charging, 0664, bypass_charging_show, bypass_charging_store);
+
+static struct attribute *bypass_charge_attrs[] = {
+	&bypass_charging_attr.attr,
+	NULL,
+};
+
+static struct attribute_group bypass_charge_attr_group = {
+	.attrs = bypass_charge_attrs,
+};
+
+static struct kobject *bypass_charge_kobj;
+
+static void bypass_charge_sysfs_init(struct smb_charger *chg)
+{
+	global_smb_chg = chg;
+	bypass_charge_kobj = kobject_create_and_add("bypass_charge", kernel_kobj);
+	if (bypass_charge_kobj) {
+		sysfs_create_group(bypass_charge_kobj, &bypass_charge_attr_group);
+	}
+}
+
 static int smb2_probe(struct platform_device *pdev)
 {
 	struct smb2 *chip;
@@ -3028,6 +3072,8 @@ static int smb2_probe(struct platform_device *pdev)
 	pr_info("QPNP SMB2 probed successfully usb:present=%d type=%d batt:present = %d health = %d charge = %d\n",
 		usb_present, chg->real_charger_type,
 		batt_present, batt_health, batt_charge_type);
+
+	bypass_charge_sysfs_init(chg);
 	schedule_delayed_work(&chg->reg_work, 60 * HZ);
 	return rc;
 
