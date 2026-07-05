@@ -23,6 +23,17 @@ config CPU_IDLE_GOV_LADDER
 config CPU_IDLE_GOV_MENU
 	bool "Menu governor (for tickless system)"
 
+config CPU_IDLE_GOV_NAP
+	bool "Neural Adaptive Predictor (NAP) governor"
+	default y
+	help
+	  A machine-learning-based cpuidle governor that uses a small
+	  neural network (MLP 8->8->10) to predict the optimal idle
+	  state. Weights are initialized at boot and refined via online
+	  learning.
+
+	  If unsure, say Y.
+
 config DT_IDLE_STATES
 	bool
 
