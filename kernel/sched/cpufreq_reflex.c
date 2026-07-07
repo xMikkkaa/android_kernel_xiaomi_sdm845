@@ -34,6 +34,7 @@ struct rfx_tunables {
 	unsigned int hispeed_window_us;    /* observation window (usec) */
 	unsigned int hispeed_filter_shift; /* EWMA down-ramp shift (0=off) */
 	bool pl;
+	bool iowait_boost_enable;
 };
 
 struct rfx_policy {
@@ -405,6 +406,9 @@ static void rfx_set_iowait_boost(struct rfx_cpu *rfx_c, u64 time,
 {
 	struct rfx_policy *rfx_pol = rfx_c->rfx_policy;
 
+	if (!rfx_pol->tunables->iowait_boost_enable)
+		return;
+
 	if (rfx_c->iowait_boost) {
 		s64 delta_ns = time - rfx_c->last_update;
 		if (delta_ns > TICK_NSEC) {
@@ -765,12 +769,27 @@ RFX_TUNABLE_UINT(hispeed_window_us);
 RFX_TUNABLE_UINT(hispeed_filter_shift);
 static struct governor_attr pl = __ATTR_RW(pl);
 
+static ssize_t iowait_boost_enable_show(struct gov_attr_set *attr_set, char *buf)
+{
+	struct rfx_tunables *tunables = to_rfx_tunables(attr_set);
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tunables->iowait_boost_enable);
+}
+static ssize_t iowait_boost_enable_store(struct gov_attr_set *attr_set, const char *buf, size_t count)
+{
+	struct rfx_tunables *tunables = to_rfx_tunables(attr_set);
+	if (kstrtobool(buf, &tunables->iowait_boost_enable))
+		return -EINVAL;
+	return count;
+}
+static struct governor_attr iowait_boost_enable = __ATTR_RW(iowait_boost_enable);
+
 static struct attribute *rfx_attributes[] = {
 	&version.attr,
 	&rfx_rate_limit_us.attr,
 	&hispeed_window_us.attr,
 	&hispeed_filter_shift.attr,
 	&pl.attr,
+	&iowait_boost_enable.attr,
 	NULL
 };
 
@@ -891,6 +910,7 @@ static void rfx_tunables_save(struct cpufreq_policy *policy,
 	cached->hispeed_window_us = tunables->hispeed_window_us;
 	cached->hispeed_filter_shift = tunables->hispeed_filter_shift;
 	cached->rate_limit_us = tunables->rate_limit_us;
+	cached->iowait_boost_enable = tunables->iowait_boost_enable;
 }
 
 static void rfx_clear_global_tunables(void)
@@ -959,6 +979,7 @@ static int rfx_init(struct cpufreq_policy *policy)
 	tunables->hispeed_window_us = CPUFREQ_REFLEX_DEFAULT_HISPEED_WINDOW_US;
 	tunables->hispeed_filter_shift = CPUFREQ_REFLEX_DEFAULT_HISPEED_FILTER_SHIFT;
 	tunables->pl = false;
+	tunables->iowait_boost_enable = false;
 
 	policy->governor_data = rfx_pol;
 	rfx_pol->tunables = tunables;
