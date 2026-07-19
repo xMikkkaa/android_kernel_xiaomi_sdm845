@@ -41,6 +41,7 @@ struct sched_param {
 #include <linux/percpu.h>
 #include <linux/topology.h>
 #include <linux/seccomp.h>
+#include <linux/seccomp_types.h>
 #include <linux/rcupdate.h>
 #include <linux/rculist.h>
 #include <linux/rtmutex.h>
