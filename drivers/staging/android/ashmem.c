@@ -324,7 +324,7 @@ static ssize_t ashmem_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	 * ashmem_release is called.
 	 */
 	mutex_unlock(&ashmem_mutex);
-	ret = vfs_iter_read(asma->file, iter, &iocb->ki_pos, 0);
+	ret = vfs_iter_read(asma->file, iter, &iocb->ki_pos);
 	mutex_lock(&ashmem_mutex);
 	if (ret > 0)
 		asma->file->f_pos = iocb->ki_pos;
@@ -363,9 +363,11 @@ static loff_t ashmem_llseek(struct file *file, loff_t offset, int origin)
 
 static inline vm_flags_t calc_vm_may_flags(unsigned long prot)
 {
-	return _calc_vm_trans(prot, PROT_READ,  VM_MAYREAD) |
-	       _calc_vm_trans(prot, PROT_WRITE, VM_MAYWRITE) |
-	       _calc_vm_trans(prot, PROT_EXEC,  VM_MAYEXEC);
+	vm_flags_t flags = 0;
+	if (prot & PROT_READ) flags |= VM_MAYREAD;
+	if (prot & PROT_WRITE) flags |= VM_MAYWRITE;
+	if (prot & PROT_EXEC) flags |= VM_MAYEXEC;
+	return flags;
 }
 
 static int ashmem_vmfile_mmap(struct file *file, struct vm_area_struct *vma)
@@ -455,7 +457,7 @@ static int ashmem_mmap(struct file *file, struct vm_area_struct *vma)
 			goto out;
 		}
 	} else {
-		vma_set_anonymous(vma);
+		vma->vm_ops = NULL;
 	}
 
 	if (vma->vm_file)
