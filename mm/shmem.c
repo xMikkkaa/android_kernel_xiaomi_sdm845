@@ -977,6 +977,22 @@ void shmem_truncate_range(struct inode *inode, loff_t lstart, loff_t lend)
 	inode->i_ctime = inode->i_mtime = current_time(inode);
 }
 EXPORT_SYMBOL_GPL(shmem_truncate_range);
+#ifdef CONFIG_TRANSPARENT_HUGE_PAGECACHE
+static inline bool is_huge_enabled(struct shmem_sb_info *sbinfo)
+{
+	if (shmem_huge == SHMEM_HUGE_FORCE)
+		return true;
+	if (shmem_huge == SHMEM_HUGE_DENY)
+		return false;
+	return sbinfo->huge != SHMEM_HUGE_NEVER;
+}
+#else
+static inline bool is_huge_enabled(struct shmem_sb_info *sbinfo)
+{
+	return false;
+}
+#endif
+
 
 static int shmem_getattr(struct vfsmount *mnt, struct dentry *dentry,
 			 struct kstat *stat)
