@@ -5,6 +5,7 @@
 #include <linux/sched.h>
 #include <linux/types.h>
 #include <linux/nodemask.h>
+#include <linux/mm.h>
 #include <uapi/linux/oom.h>
 
 struct zonelist;
