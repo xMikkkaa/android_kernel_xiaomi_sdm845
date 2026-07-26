@@ -868,7 +868,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt)
 	q->fq_trees_log		= ilog2(1024);
 	q->orphan_mask		= 1024 - 1;
 	q->low_rate_threshold	= 550000 / 8;
-	q->ce_threshold		= ~0ULL;	/* default: disabled (max u64) */
+	q->ce_threshold		= (u64)NSEC_PER_USEC * 1000;	/* default: 1ms for BBR3 ECN */
 	qdisc_watchdog_init(&q->watchdog, sch);
 
 	if (opt)
