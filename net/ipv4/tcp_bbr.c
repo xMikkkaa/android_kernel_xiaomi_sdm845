@@ -478,7 +478,7 @@ static u32 bbr_tso_segs_generic(struct sock *sk, unsigned int mss_now,
 {
 	struct bbr *bbr = inet_csk_ca(sk);
 	u32 segs, r;
-	u32 bytes;
+	u64 bytes;
 
 	/* Budget a TSO/GSO burst size allowance based on bw (pacing_rate). */
 	bytes = READ_ONCE(sk->sk_pacing_rate) >> READ_ONCE(sk->sk_pacing_shift);
@@ -1062,54 +1062,52 @@ static void bbr_check_ecn_too_high_in_startup(struct sock *sk, u32 ce_ratio)
 	}
 }
 
-/* Updates ecn_alpha and returns ce_ratio. -1 if not available. *//* Updates ecn_alpha and returns ce_ratio. -1 if not available. */
+/* Updates ecn_alpha and returns ce_ratio. -1 if not available. */
 static int bbr_update_ecn_alpha(struct sock *sk)
 {
-    struct tcp_sock *tp = tcp_sk(sk);
-    struct net *net = sock_net(sk);
-    struct bbr *bbr = inet_csk_ca(sk);
-    s32 delivered, delivered_ce;
-    u64 alpha, ce_ratio;
-    u32 gain;
-    bool want_ecn_alpha;
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct net *net = sock_net(sk);
+	struct bbr *bbr = inet_csk_ca(sk);
+	s32 delivered, delivered_ce;
+	u64 alpha, ce_ratio;
+	u32 gain;
+	bool want_ecn_alpha;
 
-    /* See if we should use ECN sender logic for this connection. */
-    if (!bbr->ecn_eligible) {
-        if (bbr_can_use_ecn(sk)) {
-            if (bbr_param(sk, ecn_factor)) {
-                if (bbr->min_rtt_us <= bbr_ecn_max_rtt_us || !bbr_ecn_max_rtt_us) {
-                    bbr->ecn_eligible = 1;
-                }
-            }
-        }
-    }
+	/* See if we should use ECN sender logic for this connection. */
+	if (!bbr->ecn_eligible && bbr_can_use_ecn(sk) &&
+	    !!bbr_param(sk, ecn_factor) &&
+	    (bbr->min_rtt_us <= bbr_ecn_max_rtt_us ||
+	     !bbr_ecn_max_rtt_us))
+		bbr->ecn_eligible = 1;
 
-    /* Skip updating alpha only if not ECN-eligible and PLB is disabled. */
-    want_ecn_alpha = bbr->ecn_eligible;
-    if (!want_ecn_alpha) {
-        want_ecn_alpha = bbr_can_use_ecn(sk) & READ_ONCE(net->ipv4.sysctl_tcp_plb_enabled);
-    }
-    if (!want_ecn_alpha)
-        return -1;
+	/* Skip updating alpha only if not ECN-eligible and PLB is disabled. */
+	want_ecn_alpha = (bbr->ecn_eligible ||
+			  (bbr_can_use_ecn(sk) &&
+			   READ_ONCE(net->ipv4.sysctl_tcp_plb_enabled)));
+	if (!want_ecn_alpha)
+		return -1;
 
-    delivered = tp->delivered - bbr->alpha_last_delivered;
-    delivered_ce = tp->delivered_ce - bbr->alpha_last_delivered_ce;
-    if (delivered == 0 || /* avoid divide by zero */
-        WARN_ON_ONCE(delivered < 0 || delivered_ce < 0)) /* backwards? */
-        return -1;
+	delivered = tp->delivered - bbr->alpha_last_delivered;
+	delivered_ce = tp->delivered_ce - bbr->alpha_last_delivered_ce;
 
-    BUILD_BUG_ON(BBR_SCALE != TCP_PLB_SCALE);
-    ce_ratio = (u64)delivered_ce << BBR_SCALE;
-    do_div(ce_ratio, delivered);
-    gain = bbr_param(sk, ecn_alpha_gain);
-    alpha = ((BBR_UNIT - gain) * bbr->ecn_alpha) >> BBR_SCALE;
-    alpha += (gain * ce_ratio) >> BBR_SCALE;
-    bbr->ecn_alpha = min_t(u32, alpha, BBR_UNIT);
-    bbr->alpha_last_delivered = tp->delivered;
-    bbr->alpha_last_delivered_ce = tp->delivered_ce;
+	if (delivered == 0 ||           /* avoid divide by zero */
+	    WARN_ON_ONCE(delivered < 0 || delivered_ce < 0))  /* backwards? */
+		return -1;
 
-    bbr_check_ecn_too_high_in_startup(sk, ce_ratio);
-    return (int)ce_ratio;
+	BUILD_BUG_ON(BBR_SCALE != TCP_PLB_SCALE);
+	ce_ratio = (u64)delivered_ce << BBR_SCALE;
+	do_div(ce_ratio, delivered);
+
+	gain = bbr_param(sk, ecn_alpha_gain);
+	alpha = ((BBR_UNIT - gain) * bbr->ecn_alpha) >> BBR_SCALE;
+	alpha += (gain * ce_ratio) >> BBR_SCALE;
+	bbr->ecn_alpha = min_t(u32, alpha, BBR_UNIT);
+
+	bbr->alpha_last_delivered = tp->delivered;
+	bbr->alpha_last_delivered_ce = tp->delivered_ce;
+
+	bbr_check_ecn_too_high_in_startup(sk, ce_ratio);
+	return (int)ce_ratio;
 }
 
 /* Protective Load Balancing (PLB). PLB rehashes outgoing data (to a new IPv6
@@ -1182,19 +1180,14 @@ static bool bbr_is_inflight_too_high(const struct sock *sk,
 		}
 	}
 
-    if (rs->delivered_ce > 0) {
-        if (rs->delivered > 0) {
-            if (bbr->ecn_eligible) {
-                u32 thresh_param = bbr_param(sk, ecn_thresh);
-                if (thresh_param) {
-                    ecn_thresh = (u64)rs->delivered * thresh_param >> BBR_SCALE;
-                    if (rs->delivered_ce > ecn_thresh) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
+	if (rs->delivered_ce > 0 && rs->delivered > 0 &&
+	    bbr->ecn_eligible && !!bbr_param(sk, ecn_thresh)) {
+		ecn_thresh = (u64)rs->delivered * bbr_param(sk, ecn_thresh) >>
+				BBR_SCALE;
+		if (rs->delivered_ce > ecn_thresh) {
+			return true;
+		}
+	}
 
 	return false;
 }
@@ -1386,12 +1379,10 @@ static void bbr_adapt_lower_bounds(struct sock *sk,
 		return;
 
 	/* ECN response. */
-    if (bbr->ecn_in_round) {
-        if (bbr_param(sk, ecn_factor)) {
-            bbr_init_lower_bounds(sk, false);
-            bbr_ecn_lower_bounds(sk, &ecn_inflight_lo);
-        }
-    }
+	if (bbr->ecn_in_round && !!bbr_param(sk, ecn_factor)) {
+		bbr_init_lower_bounds(sk, false);
+		bbr_ecn_lower_bounds(sk, &ecn_inflight_lo);
+	}
 
 	/* Loss response. */
 	if (bbr->loss_in_round) {
