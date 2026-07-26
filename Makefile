@@ -692,11 +692,12 @@ LD		:= $(LDGOLD)
 LDFLAGS		+= -plugin LLVMgold.so
 LDFLAGS		+= -plugin-opt=mcpu=kryo
 endif
-# use llvm-ar for building symbol tables from IR files, and llvm-dis instead
+# use llvm-ar for building symbol tables from IR files, and llvm-nm instead
 # of objdump for processing symbol versions and exports
 LLVM_AR		:= llvm-ar
+LLVM_NM		:= llvm-nm
 LLVM_DIS	:= llvm-dis
-export LLVM_AR LLVM_DIS
+export LLVM_AR LLVM_NM LLVM_DIS
 # Set O3 optimization level for LTO
 LDFLAGS		+= --plugin-opt=O3
 endif
@@ -724,15 +725,22 @@ endif
 
 ifdef CONFIG_LTO_CLANG
 ifdef CONFIG_THINLTO
-lto-clang-flags := -flto=thin
-KBUILD_LDFLAGS += --thinlto-cache-dir=.thinlto-cache
+lto-clang-flags := -flto=thin -fsplit-lto-unit -fvisibility=default
+KBUILD_LDFLAGS += --thinlto-cache-dir=$(extmod-prefix).thinlto-cache
 else
-lto-clang-flags	:= -flto
+lto-clang-flags	:= -flto -fvisibility=hidden
 endif
-lto-clang-flags += -fvisibility=hidden
+
+# Limit inlining across translation units to reduce binary size
+LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
+
+KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
+KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
+
+KBUILD_LDFLAGS_MODULE += -T $(srctree)/scripts/module-lto.lds
 
 # allow disabling only clang LTO where needed
-DISABLE_LTO_CLANG := -fno-lto -fvisibility=default
+DISABLE_LTO_CLANG := -fno-lto
 export DISABLE_LTO_CLANG
 endif
 
