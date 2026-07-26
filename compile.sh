@@ -52,7 +52,7 @@ JOBS="$(nproc --all)"
 
 # Kernel name from defconfig LOCALVERSION
 OC_VAL="805"
-KERNEL_NAME="Chimera-V3"
+KERNEL_NAME="Chimera-V4"
 
 # Build variant (default or nse)
 VARIANT="default"
@@ -287,17 +287,17 @@ package_zip() {
     cp "${OUT_DIR}/arch/${ARCH}/boot/${KERNEL_IMAGE}" "${STAGING_DIR}/"
     log_info "Copied ${KERNEL_IMAGE} to AnyKernel3 staging"
 
-    local ZIP_NAME="Chimera-V3-OC${OC_VAL}.zip"
+    local ZIP_NAME="Chimera-V4-OC${OC_VAL}.zip"
     if [ "${VARIANT}" = "nse" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
-        ZIP_NAME="Chimera-V3-NSE-Disable-Audio-OC${OC_VAL}.zip"
+        ZIP_NAME="Chimera-V4-NSE-Disable-Audio-OC${OC_VAL}.zip"
     elif [ "${VARIANT}" = "nse" ]; then
-        ZIP_NAME="Chimera-V3-NSE-OC${OC_VAL}.zip"
+        ZIP_NAME="Chimera-V4-NSE-OC${OC_VAL}.zip"
     elif [ "${VARIANT}" = "dynamic" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
-        ZIP_NAME="Chimera-V3-Dynamic-Disable-Audio-OC${OC_VAL}.zip"
+        ZIP_NAME="Chimera-V4-Dynamic-Disable-Audio-OC${OC_VAL}.zip"
     elif [ "${VARIANT}" = "dynamic" ]; then
-        ZIP_NAME="Chimera-V3-Dynamic-OC${OC_VAL}.zip"
+        ZIP_NAME="Chimera-V4-Dynamic-OC${OC_VAL}.zip"
     elif [ "${DISABLE_AUDIO}" = "true" ]; then
-        ZIP_NAME="Chimera-V3-Disable-Audio-OC${OC_VAL}.zip"
+        ZIP_NAME="Chimera-V4-Disable-Audio-OC${OC_VAL}.zip"
     fi
 
     mkdir -p "${ZIP_DIR}"
@@ -556,17 +556,17 @@ main() {
     done
 
     if [ "${VARIANT}" = "nse" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
-        KERNEL_NAME="Chimera-V3-NSE-Disable-Audio-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-NSE-Disable-Audio-OC${OC_VAL}"
     elif [ "${VARIANT}" = "nse" ]; then
-        KERNEL_NAME="Chimera-V3-NSE-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-NSE-OC${OC_VAL}"
     elif [ "${VARIANT}" = "dynamic" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
-        KERNEL_NAME="Chimera-V3-Dynamic-Disable-Audio-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-Dynamic-Disable-Audio-OC${OC_VAL}"
     elif [ "${VARIANT}" = "dynamic" ]; then
-        KERNEL_NAME="Chimera-V3-Dynamic-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-Dynamic-OC${OC_VAL}"
     elif [ "${DISABLE_AUDIO}" = "true" ]; then
-        KERNEL_NAME="Chimera-V3-Disable-Audio-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-Disable-Audio-OC${OC_VAL}"
     else
-        KERNEL_NAME="Chimera-V3-OC${OC_VAL}"
+        KERNEL_NAME="Chimera-V4-OC${OC_VAL}"
     fi
 
     if [ "${ACTION}" = "--help" ] || [ "${ACTION}" = "-h" ]; then
