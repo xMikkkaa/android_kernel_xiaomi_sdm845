@@ -53,6 +53,7 @@
 #include <net/sock.h>
 #include <net/tcp_states.h>
 #include <net/tcp.h>
+#include <net/inet_ecn.h>
 
 /*
  * Per flow structure, dynamically allocated
@@ -111,6 +112,8 @@ struct fq_sched_data {
 	u64		stat_flows_plimit;
 	u64		stat_pkts_too_long;
 	u64		stat_allocation_errors;
+	u64		ce_threshold;	/* jitter threshold in ns for CE mark */
+	u64		stat_ce_mark;	/* packets with CE mark */
 	struct qdisc_watchdog watchdog;
 };
 
@@ -528,6 +531,19 @@ begin:
 	prefetch(&skb->end);
 	f->credit -= qdisc_pkt_len(skb);
 
+	/* DCTCP-like CE-marking: if the packet has been held in the qdisc
+	 * longer than ce_threshold, set the CE bit to signal shallow
+	 * congestion to ECN-capable receivers (e.g. BBR3 with TCP_ECN_LOW).
+	 */
+	if (q->ce_threshold) {
+		u64 t = f->time_next_packet;
+
+		if (t && (s64)(now - t - q->ce_threshold) > 0) {
+			INET_ECN_set_ce(skb);
+			q->stat_ce_mark++;
+		}
+	}
+
 	if (!q->rate_enable)
 		goto out;
 
@@ -722,6 +738,7 @@ static const struct nla_policy fq_policy[TCA_FQ_MAX + 1] = {
 	[TCA_FQ_FLOW_REFILL_DELAY]	= { .type = NLA_U32 },
 	[TCA_FQ_ORPHAN_MASK]		= { .type = NLA_U32 },
 	[TCA_FQ_LOW_RATE_THRESHOLD]	= { .type = NLA_U32 },
+	[TCA_FQ_CE_THRESHOLD]		= { .type = NLA_U32 },
 };
 
 static int fq_change(struct Qdisc *sch, struct nlattr *opt)
@@ -779,6 +796,10 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt)
 	if (tb[TCA_FQ_LOW_RATE_THRESHOLD])
 		q->low_rate_threshold =
 			nla_get_u32(tb[TCA_FQ_LOW_RATE_THRESHOLD]);
+
+	if (tb[TCA_FQ_CE_THRESHOLD])
+		q->ce_threshold = (u64)NSEC_PER_USEC *
+				  nla_get_u32(tb[TCA_FQ_CE_THRESHOLD]);
 
 	if (tb[TCA_FQ_RATE_ENABLE]) {
 		u32 enable = nla_get_u32(tb[TCA_FQ_RATE_ENABLE]);
@@ -847,6 +868,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt)
 	q->fq_trees_log		= ilog2(1024);
 	q->orphan_mask		= 1024 - 1;
 	q->low_rate_threshold	= 550000 / 8;
+	q->ce_threshold		= ~0ULL;	/* default: disabled (max u64) */
 	qdisc_watchdog_init(&q->watchdog, sch);
 
 	if (opt)
@@ -879,7 +901,10 @@ static int fq_dump(struct Qdisc *sch, struct sk_buff *skb)
 	    nla_put_u32(skb, TCA_FQ_ORPHAN_MASK, q->orphan_mask) ||
 	    nla_put_u32(skb, TCA_FQ_LOW_RATE_THRESHOLD,
 			q->low_rate_threshold) ||
-	    nla_put_u32(skb, TCA_FQ_BUCKETS_LOG, q->fq_trees_log))
+	    nla_put_u32(skb, TCA_FQ_BUCKETS_LOG, q->fq_trees_log) ||
+	    nla_put_u32(skb, TCA_FQ_CE_THRESHOLD,
+			(q->ce_threshold == ~0ULL) ? ~0U :
+			(u32)div_u64(q->ce_threshold, NSEC_PER_USEC)))
 		goto nla_put_failure;
 
 	return nla_nest_end(skb, opts);
@@ -908,6 +933,7 @@ static int fq_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 	st.throttled_flows	  = q->throttled_flows;
 	st.unthrottle_latency_ns  = min_t(unsigned long,
 					  q->unthrottle_latency_ns, ~0U);
+	st.ce_mark		  = q->stat_ce_mark;
 	sch_tree_unlock(sch);
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));

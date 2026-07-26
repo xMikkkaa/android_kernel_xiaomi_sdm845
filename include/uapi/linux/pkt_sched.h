@@ -797,6 +797,8 @@ enum {
 
 	TCA_FQ_LOW_RATE_THRESHOLD, /* per packet delay under this rate */
 
+	TCA_FQ_CE_THRESHOLD, /* DCTCP-like CE-marking threshold */
+
 	__TCA_FQ_MAX
 };
 
@@ -815,6 +817,7 @@ struct tc_fq_qd_stats {
 	__u32	inactive_flows;
 	__u32	throttled_flows;
 	__u32	unthrottle_latency_ns;
+	__u64	ce_mark;		/* packets with CE mark */
 };
 
 /* Heavy-Hitter Filter */
