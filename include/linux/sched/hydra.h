@@ -7,7 +7,7 @@
 
 #define SCHED_HYDRA_AUTHOR   "xMikkkaa"
 #define SCHED_HYDRA_PROGNAME "HYDRA Game Thread Optimizer"
-#define SCHED_HYDRA_VERSION  "1.0"
+#define SCHED_HYDRA_VERSION  "2.0"
 
 #define HYDRA_MAX_TRACKED_THREADS 64
 
