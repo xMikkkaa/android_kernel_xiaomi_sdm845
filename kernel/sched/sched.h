@@ -472,6 +472,7 @@ struct cfs_rq {
 	unsigned int nr_running, h_nr_running;
 
 	s64 avg_vruntime;
+	u64 avg_slice;
 	u64 avg_load;
 
 	u64 exec_clock;
@@ -3027,3 +3028,5 @@ static inline void sched_irq_work_queue(struct irq_work *work)
 		irq_work_queue_on(work, cpumask_any(cpu_online_mask));
 }
 #endif
+
+#define ENQUEUE_INITIAL		0x80

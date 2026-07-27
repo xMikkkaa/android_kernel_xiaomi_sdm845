@@ -33,6 +33,7 @@
 #include <linux/module.h>
 
 #include "sched.h"
+#include <linux/rbtree_augmented.h>
 #include "tune.h"
 #include "walt.h"
 #ifdef CONFIG_SCHED_BORE
@@ -231,6 +232,7 @@ void sched_init_granularity(void)
 
 #define WMULT_CONST	(~0U)
 #define WMULT_SHIFT	32
+
 
 static void __update_inv_weight(struct load_weight *lw)
 {
@@ -732,38 +734,41 @@ static void update_min_vruntime(struct cfs_rq *cfs_rq)
 /*
  * Enqueue an entity into the rb-tree:
  */
-#define deadline_gt(field, lse, rse) ({ (s64)((lse)->field - (rse)->field) > 0; })
-
-static inline void __update_min_deadline(struct sched_entity *se, struct rb_node *node)
-{
-	if (node) {
-		struct sched_entity *rse = __node_2_se(node);
-		if (deadline_gt(min_deadline, se, rse))
-			se->min_deadline = rse->min_deadline;
-	}
-}
+#define __node_2_se(node) rb_entry((node), struct sched_entity, run_node)
 
 /*
  * se->min_deadline = min(se->deadline, left->min_deadline, right->min_deadline)
  */
-static inline bool min_deadline_update(struct sched_entity *se, bool exit)
+static inline u64 min_deadline_compute(struct sched_entity *se)
 {
-	u64 old_min_deadline = se->min_deadline;
+	u64 min_deadline = se->deadline;
 	struct rb_node *node = &se->run_node;
 
-	se->min_deadline = se->deadline;
-	__update_min_deadline(se, node->rb_right);
-	__update_min_deadline(se, node->rb_left);
+	if (node->rb_left) {
+		struct sched_entity *left = __node_2_se(node->rb_left);
+		if ((s64)(min_deadline - left->min_deadline) > 0)
+			min_deadline = left->min_deadline;
+	}
+	if (node->rb_right) {
+		struct sched_entity *right = __node_2_se(node->rb_right);
+		if ((s64)(min_deadline - right->min_deadline) > 0)
+			min_deadline = right->min_deadline;
+	}
 
-	return se->min_deadline == old_min_deadline;
+	return min_deadline;
 }
 
 RB_DECLARE_CALLBACKS(static, min_deadline_cb, struct sched_entity,
-		     run_node, min_deadline, min_deadline_update);
+		     run_node, u64, min_deadline, min_deadline_compute)
+
 
 /*
  * Enqueue an entity into the rb-tree:
  */
+#define deadline_gt(field, lse, rse) ({ (s64)((lse)->field - (rse)->field) > 0; })
+
+static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq);
+
 #ifdef CONFIG_SCHED_DEBUG
 struct validate_data {
 	s64 va;
@@ -810,8 +815,6 @@ static void __print_node(struct cfs_rq *cfs_rq, struct rb_node *node, int level,
 	__print_node(cfs_rq, node->rb_left, level+1, data);
 	__print_node(cfs_rq, node->rb_right, level+1, data);
 }
-
-static struct sched_entity *pick_eevdf(struct cfs_rq *cfs_rq);
 
 static void validate_cfs_rq(struct cfs_rq *cfs_rq, bool pick)
 {
@@ -886,7 +889,6 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		cfs_rq->rb_leftmost = &se->run_node;
 
 	rb_link_node(&se->run_node, parent, link);
-	min_deadline_cb.propagate(parent, NULL); /* suboptimal */
 	rb_insert_augmented(&se->run_node, &cfs_rq->tasks_timeline, &min_deadline_cb);
 
 	if (sched_feat(VALIDATE_QUEUE))
@@ -909,9 +911,6 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		validate_cfs_rq(cfs_rq, true);
 }
 
-	rb_erase(&se->run_node, &cfs_rq->tasks_timeline);
-	avg_vruntime_sub(cfs_rq, se);
-}
 
 struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 {
@@ -972,16 +971,6 @@ void set_latency_fair(struct sched_entity *se, int prio)
 	se->slice = div_u64(base << SCHED_FIXEDPOINT_SHIFT, weight);
 }
 
-/*
- * delta /= w
- */
-static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
-{
-	if (unlikely(se->load.weight != NICE_0_LOAD))
-		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
-
-	return delta;
-}
 
 
 
@@ -1138,7 +1127,7 @@ static void update_curr(struct cfs_rq *cfs_rq)
 
 	curr->vruntime += calc_delta_fair(delta_exec, curr);
 
-	if (sched_feat(EEVDF)) {
+	if (1) {
 		s64 true_slice = calc_delta_fair(curr->slice, curr);
 		/*
 		 * Schedule the right amount, then the next pick will do the
@@ -4098,51 +4087,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	}
 }
 
-		if (delta_exec < sysctl_sched_base_slice)
-			return;
 
-		se = __pick_first_entity(cfs_rq);
-		if (se == curr)
-			return;
-
-		if (entity_eligible(cfs_rq, se) &&
-		    deadline_gt(deadline, curr, se)) {
-			resched_curr(rq_of(cfs_rq));
-			clear_buddies(cfs_rq, curr);
-		}
-
-		return;
-	}
-
-	ideal_runtime = sched_slice(cfs_rq, curr);
-	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
-	if (delta_exec > ideal_runtime) {
-		resched_curr(rq_of(cfs_rq));
-		/*
-		 * The current task ran long enough, ensure it doesn't get
-		 * re-elected due to buddy favours.
-		 */
-		clear_buddies(cfs_rq, curr);
-		return;
-	}
-
-	/*
-	 * Ensure that a task that missed wakeup preemption by a
-	 * narrow margin doesn't have to wait for a full slice.
-	 * This also mitigates buddy induced latencies under load.
-	 */
-	if (delta_exec < sysctl_sched_base_slice)
-		return;
-
-	se = __pick_first_entity(cfs_rq);
-	delta = curr->vruntime - se->vruntime;
-
-	if (delta < 0)
-		return;
-
-	if (delta > ideal_runtime)
-		resched_curr(rq_of(cfs_rq));
-}
 
 static void
 set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -5228,12 +5173,11 @@ static inline void unthrottle_offline_cfs_rqs(struct rq *rq) {}
 static void hrtick_start_fair(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
-	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 
 	SCHED_WARN_ON(task_rq(p) != rq);
 
 	if (rq->cfs.h_nr_running > 1) {
-		u64 slice = sched_slice(cfs_rq, se);
+		u64 slice = se->slice;
 		u64 ran = se->sum_exec_runtime - se->prev_sum_exec_runtime;
 		s64 delta = slice - ran;
 
@@ -8188,7 +8132,6 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	struct task_struct *curr = rq->curr;
 	struct sched_entity *se = &curr->se, *pse = &p->se;
 	struct cfs_rq *cfs_rq = task_cfs_rq(curr);
-	int next_buddy_marked = 0;
 
 	if (unlikely(se == pse))
 		return;
@@ -8202,66 +8145,9 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	if (unlikely(throttled_hierarchy(cfs_rq_of(pse))))
 		return;
 
-	if (sched_feat(NEXT_BUDDY) && !(wake_flags & WF_FORK)) {
-		set_next_buddy(pse);
-		next_buddy_marked = 1;
-	}
-
 	/*
 	 * We can come here with TIF_NEED_RESCHED already set from new task
 	 * wake up path.
-	 *
-	 * Note: this also catches the edge-case of curr being in a throttled
-	 * group (e.g. via set_curr_task), since update_curr() (in the
-	 * enqueue of curr) will have resulted in resched being set.  This
-	 * prevents us from potentially nominating it as a false LAST_BUDDY
-	 * below.
-	 */
-	if (test_tsk_need_resched(curr))
-		return;
-
-	/* Idle tasks are by definition preempted by non-idle tasks. */
-	if (unlikely(task_has_idle_policy(curr)) &&
-	    likely(!task_has_idle_policy(p)))
-		goto preempt;
-
-	/*
-	 * Batch and idle tasks do not preempt non-idle tasks (their preemption
-	 * is driven by the tick):
-	 */
-	if (unlikely(p->policy != SCHED_NORMAL) || !sched_feat(WAKEUP_PREEMPTION))
-		return;
-
-	find_matching_se(&se, &pse);
-	update_curr(cfs_rq_of(se));
-	BUG_ON(!pse);
-	if (fault_in_matching_cfs_rq(&se, &pse))
-		return;
-
-	cfs_rq = cfs_rq_of(se);
-	update_curr(cfs_rq);
-
-	/*
-	 * XXX pick_eevdf(cfs_rq) != se ?
-	 */
-	if (pick_eevdf(cfs_rq) == pse)
-		goto preempt;
-
-	return;
-
-preempt:
-	resched_curr(rq);
-}
-
-	/*
-	 * We can come here with TIF_NEED_RESCHED already set from new task
-	 * wake up path.
-	 *
-	 * Note: this also catches the edge-case of curr being in a throttled
-	 * group (e.g. via set_curr_task), since update_curr() (in the
-	 * enqueue of curr) will have resulted in resched being set.  This
-	 * prevents us from potentially nominating it as a false LAST_BUDDY
-	 * below.
 	 */
 	if (test_tsk_need_resched(curr))
 		return;
@@ -8281,34 +8167,19 @@ preempt:
 	find_matching_se(&se, &pse);
 	update_curr(cfs_rq_of(se));
 	BUG_ON(!pse);
-	if (wakeup_preempt_entity(se, pse) == 1) {
-		/*
-		 * Bias pick_next to pick the sched entity that is
-		 * triggering this preemption.
-		 */
-		if (!next_buddy_marked)
-			set_next_buddy(pse);
+
+	cfs_rq = cfs_rq_of(se);
+
+	/*
+	 * XXX pick_eevdf(cfs_rq) != se ?
+	 */
+	if (pick_eevdf(cfs_rq) == pse)
 		goto preempt;
-	}
 
 	return;
 
 preempt:
 	resched_curr(rq);
-	/*
-	 * Only set the backward buddy when the current task is still
-	 * on the rq. This can happen when a wakeup gets interleaved
-	 * with schedule on the ->pre_schedule() or idle_balance()
-	 * point, either of which can * drop the rq lock.
-	 *
-	 * Also, during early boot the idle thread is in the fair class,
-	 * for obvious reasons its a bad idea to schedule back to it.
-	 */
-	if (unlikely(!se->on_rq || curr == rq->idle))
-		return;
-
-	if (sched_feat(LAST_BUDDY) && scale && entity_is_task(se))
-		set_last_buddy(se);
 }
 
 static struct task_struct *
@@ -8488,7 +8359,7 @@ static void yield_task_fair(struct rq *rq)
 	 * so we don't do microscopic update in schedule()
 	 * and double the fastpath cost.
 	 */
-	rq_clock_skip_update(rq);
+	rq_clock_skip_update(rq, true);
 
 	se->deadline += calc_delta_fair(se->slice, se);
 }
@@ -12053,7 +11924,7 @@ static unsigned int get_rr_interval_fair(struct rq *rq, struct task_struct *task
 	 * idle runqueue:
 	 */
 	if (rq->cfs.load.weight)
-		rr_interval = NS_TO_JIFFIES(sched_slice(cfs_rq_of(se), se));
+		rr_interval = NS_TO_JIFFIES(se->slice);
 
 	return rr_interval;
 }
