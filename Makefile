@@ -822,10 +822,10 @@ endif
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS   += -Os
 else
-KBUILD_CFLAGS   += -O3
+KBUILD_CFLAGS   += -O2
 endif
 
-KBUILD_CFLAGS	+= -O3 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd+sve \
+KBUILD_CFLAGS	+= -O2 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd+sve \
 -fomit-frame-pointer -pipe \
 -funroll-loops \
 -ftree-vectorize \
@@ -837,7 +837,7 @@ KBUILD_CFLAGS	+= -O3 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd+sve
 #KBUILD_CFLAGS	+= -fno-gcse  
 #KBUILD_CFLAGS	+= -floop-strip-mine -floop-block
 #KBUILD_CFLAGS	+= -floop-optimize -ftree-vectorize -ftracer
-LDFLAGS		+= -O3
+LDFLAGS		+= -O2
 KBUILD_CFLAGS	+= $(call cc-option,-mabi=lp64)
 KBUILD_AFLAGS	+= $(call cc-option,-mabi=lp64)
 
