@@ -33,3 +33,5 @@ proc-$(CONFIG_PROC_KCORE)	+= kcore.o
 proc-$(CONFIG_PROC_VMCORE)	+= vmcore.o
 proc-$(CONFIG_PRINTK)	+= kmsg.o
 proc-$(CONFIG_PROC_PAGE_MONITOR)	+= page.o
+CFLAGS_array.o += $(DISABLE_LTO)
+CFLAGS_base.o += $(DISABLE_LTO)

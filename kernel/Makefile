@@ -146,3 +146,9 @@ $(obj)/kheaders_data.tar.xz: FORCE
 	$(call cmd,genikh)
 
 clean-files := kheaders_data.tar.xz kheaders.md5
+CFLAGS_sys.o += $(DISABLE_LTO)
+CFLAGS_kallsyms.o += $(DISABLE_LTO)
+CFLAGS_fork.o += $(DISABLE_LTO)
+CFLAGS_capability.o += $(DISABLE_LTO)
+CFLAGS_module.o += $(DISABLE_LTO)
+CFLAGS_ptrace.o += $(DISABLE_LTO)

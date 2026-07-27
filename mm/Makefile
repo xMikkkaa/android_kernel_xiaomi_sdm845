@@ -101,3 +101,7 @@ obj-$(CONFIG_FRAME_VECTOR) += frame_vector.o
 obj-$(CONFIG_DEBUG_PAGE_REF) += debug_page_ref.o
 obj-$(CONFIG_HARDENED_USERCOPY) += usercopy.o
 obj-$(CONFIG_PROCESS_RECLAIM)	+= process_reclaim.o
+CFLAGS_vmalloc.o += $(DISABLE_LTO)
+CFLAGS_slub.o += $(DISABLE_LTO)
+CFLAGS_slab.o += $(DISABLE_LTO)
+CFLAGS_process_vm_access.o += $(DISABLE_LTO)

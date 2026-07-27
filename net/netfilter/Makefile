@@ -188,3 +188,4 @@ obj-$(CONFIG_IP_SET) += ipset/
 
 # IPVS
 obj-$(CONFIG_IP_VS) += ipvs/
+CFLAGS_x_tables.o += $(DISABLE_LTO)

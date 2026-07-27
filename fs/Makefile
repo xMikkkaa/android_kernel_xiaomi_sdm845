@@ -136,3 +136,11 @@ obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
 
 CFLAGS_binfmt_elf.o		+= -Wframe-larger-than=8192
 CFLAGS_compat_binfmt_elf.o	+= -Wframe-larger-than=8192
+CFLAGS_exec.o += $(DISABLE_LTO)
+CFLAGS_open.o += $(DISABLE_LTO)
+CFLAGS_read_write.o += $(DISABLE_LTO)
+CFLAGS_stat.o += $(DISABLE_LTO)
+CFLAGS_namespace.o += $(DISABLE_LTO)
+CFLAGS_namei.o += $(DISABLE_LTO)
+CFLAGS_susfs.o += $(DISABLE_LTO)
+CFLAGS_dcookies.o += $(DISABLE_LTO)
