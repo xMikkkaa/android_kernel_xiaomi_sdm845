@@ -386,6 +386,7 @@ struct sock {
 	atomic_t		sk_wmem_alloc;
 	atomic_t		sk_omem_alloc;
 	int			sk_sndbuf;
+	unsigned long		sk_tsq_flags;
 	struct sk_buff_head	sk_write_queue;
 	__u32			sk_dst_pending_confirm;
 	u32			sk_pacing_status; /* see enum sk_pacing */
