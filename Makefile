@@ -760,8 +760,16 @@ else
 lto-clang-flags	:= -flto -fvisibility=hidden
 endif
 
-# Limit inlining across translation units to reduce binary size
-LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
+# Aggressive LTO optimizations for Performance
+LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=30 \
+                      -mllvm -inline-threshold=500 \
+                      -mllvm -unroll-threshold=300 \
+                      -mllvm -vectorize-loops \
+                      -mllvm -vectorize-slp
+
+ifeq ($(ld-name),lld)
+LD_FLAGS_LTO_CLANG += --lto-O2 -O2
+endif
 
 KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
