@@ -183,11 +183,11 @@ struct qpnp_regulator_platform_data {
  * This initialization function should be called in systems in which driver
  * registration ordering must be controlled precisely.
  */
-int __init qpnp_regulator_init(void);
+int qpnp_regulator_init(void);
 
 #else
 
-static inline int __init qpnp_regulator_init(void)
+static inline int qpnp_regulator_init(void)
 {
 	return -ENODEV;
 }
