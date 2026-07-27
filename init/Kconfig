@@ -1135,6 +1135,16 @@ config SCHED_AUTOGROUP
 	  desktop applications.  Task group autogeneration is currently based
 	  upon task session.
 
+config SCHED_BORE
+	bool "Burst-Oriented Response Enhancer (BORE) CPU Scheduler"
+	depends on FAIR_GROUP_SCHED
+	default y
+	help
+	  Enables the BORE CPU scheduler modification which improves
+	  responsiveness for interactive workloads by tracking CPU burst
+	  time of tasks and applying a penalty to burst-heavy tasks.
+	  Developed by Masahito Suzuki <firelzrd@gmail.com>.
+
 config SCHED_TUNE
 	bool "Boosting for CFS tasks (EXPERIMENTAL)"
 	depends on SMP

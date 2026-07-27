@@ -2427,10 +2427,6 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 
 #ifdef CONFIG_SCHED_BORE
-	sched_fork_bore(p);
-#endif
-
-#ifdef CONFIG_SCHED_BORE
 	reset_task_bore(p);
 #endif // CONFIG_SCHED_BORE
 
