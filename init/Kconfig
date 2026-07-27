@@ -1145,6 +1145,13 @@ config SCHED_BORE
 	  time of tasks and applying a penalty to burst-heavy tasks.
 	  Developed by Masahito Suzuki <firelzrd@gmail.com>.
 
+config SCHED_HYDRA
+	bool "High-Yield Dynamic Render Affinity (HYDRA)"
+	default y
+	help
+	  Enables the HYDRA Game Thread Optimizer which locks
+	  critical game threads to big cores with priority -10.
+
 config SCHED_TUNE
 	bool "Boosting for CFS tasks (EXPERIMENTAL)"
 	depends on SMP
