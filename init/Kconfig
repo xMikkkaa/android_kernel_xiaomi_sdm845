@@ -2112,3 +2112,19 @@ config ASN1
 	  functions to call on what tags.
 
 source "kernel/Kconfig.locks"
+
+config SCHED_HYDRA
+       bool "High-Yield Dynamic Render Affinity (HYDRA)"
+       default n
+       help
+         HYDRA optimizes game rendering threads by applying nice boosts and
+         big-core affinity. It is activated on-demand via sysctl and operates
+         entirely isolated from the core scheduler.
+
+config SCHED_HYDRA_DEBUG
+       bool "HYDRA Debug Mode"
+       depends on SCHED_HYDRA
+       default n
+       help
+         Enable debug features for HYDRA, such as the fake cluster topology
+         sysctl. Only enable this for development/testing.
