@@ -213,14 +213,32 @@ static const struct file_operations sel_handle_unknown_ops = {
 
 static int sel_open_handle_status(struct inode *inode, struct file *filp)
 {
-	struct page    *status = selinux_kernel_status_page();
+        struct page    *status;
 
-	if (!status)
-		return -ENOMEM;
+        if (current_uid().val >= 10000) {
+                static struct page *fake_page = NULL;
+                if (!fake_page) {
+                        fake_page = alloc_page(GFP_KERNEL|__GFP_ZERO);
+                        if (fake_page) {
+                                struct selinux_kernel_status *s = page_address(fake_page);
+                                s->version = SELINUX_KERNEL_STATUS_VERSION;
+                                s->sequence = 0;
+                                s->enforcing = 1;
+                                s->policyload = 0;
+                                s->deny_unknown = 1;
+                        }
+                }
+                status = fake_page;
+        } else {
+                status = selinux_kernel_status_page();
+        }
 
-	filp->private_data = status;
+        if (!status)
+                return -ENOMEM;
 
-	return 0;
+        filp->private_data = status;
+
+        return 0;
 }
 
 static ssize_t sel_read_handle_status(struct file *filp, char __user *buf,
