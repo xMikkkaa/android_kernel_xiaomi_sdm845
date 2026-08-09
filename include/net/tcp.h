@@ -800,47 +800,6 @@ static inline u32 tcp_stamp32_us_delta(u32 t1, u32 t0)
 	return max_t(s32, t1 - t0, 0);
 }
 
-/*
- * Deliver a 32bit value for TCP timestamp option (RFC 7323)
- * It is no longer tied to jiffies, but to 1 ms clock.
- * Note: double check if you want to use tcp_jiffies32 instead of this.
- */
-
-#define TCP_TS_HZ	1000
-
-static inline u64 tcp_clock_ns(void)
-{
-	return local_clock();
-}
-
-static inline u64 tcp_clock_us(void)
-{
-	return div_u64(tcp_clock_ns(), NSEC_PER_USEC);
-}
-
-/* Could use tcp_clock_us() / 1000, but this version uses a single divide */
-static inline u32 tcp_time_stamp_raw(void)
-{
-	return div_u64(tcp_clock_ns(), NSEC_PER_SEC / TCP_TS_HZ);
-}
-
-
-/* Refresh 1us clock of a TCP socket,
- * ensuring monotically increasing values.
- */
-static inline void tcp_mstamp_refresh(struct tcp_sock *tp)
-{
-	u64 val = tcp_clock_us();
-
-	if (val > tp->tcp_mstamp)
-		tp->tcp_mstamp = val;
-}
-
-static inline u32 tcp_stamp_us_delta(u64 t1, u64 t0)
-{
-	return max_t(s64, t1 - t0, 0);
-}
-
 static inline u32 tcp_skb_timestamp(const struct sk_buff *skb)
 {
 	return div_u64(skb->skb_mstamp, USEC_PER_SEC / TCP_TS_HZ);
