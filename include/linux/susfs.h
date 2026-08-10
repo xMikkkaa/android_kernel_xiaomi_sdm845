@@ -56,6 +56,21 @@ struct st_susfs_hide_sus_mnts_for_non_su_procs {
 	bool                                    enabled;
 	int                                     err;
 };
+
+/* mount source spoofing - replace raw block device source with dm-verity style path
+ * for non-root processes reading /proc/self/mounts or /proc/self/mountinfo
+ */
+struct st_susfs_mount_source_spoof {
+	char                                    target_mountpoint[SUSFS_MAX_LEN_PATHNAME]; /* e.g. "/vendor" */
+	char                                    spoofed_source[SUSFS_MAX_LEN_PATHNAME];    /* e.g. "/dev/block/dm-1" */
+	int                                     err;
+};
+
+struct st_susfs_mount_source_spoof_list {
+	struct list_head                        list;
+	char                                    target_mountpoint[SUSFS_MAX_LEN_PATHNAME];
+	char                                    spoofed_source[SUSFS_MAX_LEN_PATHNAME];
+};
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
 /* sus_kstat */
@@ -190,10 +205,17 @@ void susfs_add_sus_path(void __user **user_info);
 void susfs_add_sus_path_loop(void __user **user_info);
 #endif
 
-/* sus_mount */
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 void susfs_set_hide_sus_mnts_for_non_su_procs(void __user **user_info);
+void susfs_add_mount_source_spoof(void __user **user_info);
+void susfs_del_mount_source_spoof(void __user **user_info);
+bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
+					char *out_buf, size_t out_buf_size);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
+void susfs_auto_mount_source_spoof_init(void);
+#endif
+
 
 /* sus_kstat */
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT

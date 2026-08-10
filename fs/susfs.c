@@ -260,7 +260,211 @@ out_copy_to_user:
 	}
 	SUSFS_LOGI("CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS -> ret: %d\n", info.err);
 }
+
+/*
+ * Mount source spoofing: for umounted (non-root) app processes, replace the
+ * real block device source (e.g. /dev/block/platform/.../by-name/vendor) with
+ * a spoofed dm-verity mapper path (e.g. /dev/block/dm-1) when they read
+ * /proc/self/mounts or /proc/self/mountinfo, so that the "Direct block mount"
+ * detection in root detection apps does not trigger.
+ *
+ * Only applies to:
+ *  - Processes flagged with TIF_PROC_UMOUNTED (set by KSU during app fork)
+ *  - i.e., regular Android apps with UID >= 10000
+ * Root processes, system apps, and KSU domain are NOT affected.
+ */
+static DEFINE_MUTEX(susfs_mutex_lock_mount_source_spoof);
+static LIST_HEAD(LH_MOUNT_SOURCE_SPOOF);
+
+void susfs_add_mount_source_spoof(void __user **user_info) {
+	struct st_susfs_mount_source_spoof info = {0};
+	struct st_susfs_mount_source_spoof_list *entry;
+
+	if (copy_from_user(&info, (struct st_susfs_mount_source_spoof __user*)*user_info, sizeof(info))) {
+		info.err = -EFAULT;
+		goto out_copy_to_user;
+	}
+
+	if (info.target_mountpoint[0] == '\0' || info.spoofed_source[0] == '\0') {
+		SUSFS_LOGE("mount_source_spoof: target_mountpoint or spoofed_source is empty\n");
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
+	/* Check for duplicate entry and update if already present */
+	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
+	list_for_each_entry(entry, &LH_MOUNT_SOURCE_SPOOF, list) {
+		if (strncmp(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
+			strncpy(entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
+			entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+			mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+			SUSFS_LOGI("mount_source_spoof: updated '%s' -> '%s'\n",
+				entry->target_mountpoint, entry->spoofed_source);
+			info.err = 0;
+			goto out_copy_to_user;
+		}
+	}
+
+	entry = kzalloc(sizeof(struct st_susfs_mount_source_spoof_list), GFP_KERNEL);
+	if (!entry) {
+		mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+		info.err = -ENOMEM;
+		goto out_copy_to_user;
+	}
+
+	strncpy(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1);
+	entry->target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+	strncpy(entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
+	entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+	list_add_tail(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
+	mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+
+	SUSFS_LOGI("mount_source_spoof: added '%s' -> '%s'\n",
+		entry->target_mountpoint, entry->spoofed_source);
+	info.err = 0;
+out_copy_to_user:
+	if (copy_to_user(&((struct st_susfs_mount_source_spoof __user*)*user_info)->err, &info.err, sizeof(info.err))) {
+		info.err = -EFAULT;
+	}
+	SUSFS_LOGI("CMD_SUSFS_ADD_MOUNT_SOURCE_SPOOF -> ret: %d\n", info.err);
+}
+
+void susfs_del_mount_source_spoof(void __user **user_info) {
+	struct st_susfs_mount_source_spoof info = {0};
+	struct st_susfs_mount_source_spoof_list *entry, *tmp;
+
+	if (copy_from_user(&info, (struct st_susfs_mount_source_spoof __user*)*user_info, sizeof(info))) {
+		info.err = -EFAULT;
+		goto out_copy_to_user;
+	}
+
+	if (info.target_mountpoint[0] == '\0') {
+		info.err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
+	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
+	list_for_each_entry_safe(entry, tmp, &LH_MOUNT_SOURCE_SPOOF, list) {
+		if (strncmp(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
+			list_del(&entry->list);
+			kfree(entry);
+			mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+			SUSFS_LOGI("mount_source_spoof: removed '%s'\n", info.target_mountpoint);
+			info.err = 0;
+			goto out_copy_to_user;
+		}
+	}
+	mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+	info.err = -ENOENT;
+out_copy_to_user:
+	if (copy_to_user(&((struct st_susfs_mount_source_spoof __user*)*user_info)->err, &info.err, sizeof(info.err))) {
+		info.err = -EFAULT;
+	}
+	SUSFS_LOGI("CMD_SUSFS_DEL_MOUNT_SOURCE_SPOOF -> ret: %d\n", info.err);
+}
+
+/*
+ * susfs_get_spoofed_mount_source - look up spoofed device source for a mountpoint.
+ *
+ * @devname:     the real device name string from mnt_devname (e.g. /dev/block/.../vendor)
+ * @mountpoint:  the mount target path string (e.g. /vendor)
+ *
+ * Called from show_vfsmnt() and show_mountinfo() in proc_namespace.c.
+ * Returns the spoofed source string if a mapping exists, NULL otherwise.
+ * RCU-friendly: list is only modified under mutex, read without lock (safe for seq_file).
+ */
+bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
+				char *out_buf, size_t out_buf_size) {
+	struct st_susfs_mount_source_spoof_list *entry;
+	bool found = false;
+
+	if (!mountpoint || mountpoint[0] == '\0' || !out_buf || out_buf_size == 0)
+		return false;
+
+	/* Only spoof raw block device sources (not already a dm-verity mapper) */
+	if (devname) {
+		if (strstr(devname, "/dev/mapper/") || strstr(devname, "/dev/block/dm-"))
+			return false;
+	}
+
+	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
+	list_for_each_entry(entry, &LH_MOUNT_SOURCE_SPOOF, list) {
+		if (strncmp(entry->target_mountpoint, mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
+			strncpy(out_buf, entry->spoofed_source, out_buf_size - 1);
+			out_buf[out_buf_size - 1] = '\0';
+			found = true;
+			break;
+		}
+	}
+	mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+	return found;
+}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+#ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
+/*
+ * susfs_auto_mount_source_spoof_init - auto-seed spoof rules at kernel init.
+ *
+ * Called from susfs_init(). Populates the spoof list with standard Android
+ * system partition → dm-verity mapper mappings so root detection apps that
+ * check for "Direct block mount" (missing /dev/mapper/ or /dev/block/dm-
+ * in system partition sources) are automatically bypassed for all app-UID
+ * processes, without requiring any userspace module script configuration.
+ *
+ * The exact dm-N numbers do not need to match the real device because root
+ * detection apps (e.g. Duck Detector) only test whether the source string
+ * *contains* "/dev/block/dm-" — not the exact index. So these static
+ * defaults work universally across all Android devices.
+ *
+ * Userspace tools can still add/update/delete rules after init if needed.
+ */
+static const struct {
+	const char *mountpoint;
+	const char *spoofed_source;
+} susfs_default_mount_spoof_rules[] __initconst = {
+	{ "/system",      "/dev/block/dm-0" },
+	{ "/system_root", "/dev/block/dm-0" },
+	{ "/vendor",      "/dev/block/dm-1" },
+	{ "/product",     "/dev/block/dm-2" },
+	{ "/system_ext",  "/dev/block/dm-3" },
+	{ "/odm",         "/dev/block/dm-4" },
+};
+
+void __init susfs_auto_mount_source_spoof_init(void) {
+	int i;
+	int total = ARRAY_SIZE(susfs_default_mount_spoof_rules);
+
+	for (i = 0; i < total; i++) {
+		struct st_susfs_mount_source_spoof_list *entry;
+
+		entry = kzalloc(sizeof(struct st_susfs_mount_source_spoof_list), GFP_KERNEL);
+		if (!entry) {
+			pr_err("susfs: auto_mount_spoof: kzalloc failed for '%s'\n",
+				susfs_default_mount_spoof_rules[i].mountpoint);
+			continue;
+		}
+
+		strncpy(entry->target_mountpoint,
+			susfs_default_mount_spoof_rules[i].mountpoint,
+			SUSFS_MAX_LEN_PATHNAME - 1);
+		entry->target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
+		strncpy(entry->spoofed_source,
+			susfs_default_mount_spoof_rules[i].spoofed_source,
+			SUSFS_MAX_LEN_PATHNAME - 1);
+		entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+
+		/* No mutex needed here — called from init context, single-threaded */
+		list_add_tail(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
+
+		pr_info("susfs: auto_mount_spoof: registered '%s' -> '%s'\n",
+			entry->target_mountpoint, entry->spoofed_source);
+	}
+
+	pr_info("susfs: auto_mount_spoof: %d default rules registered\n", total);
+}
+#endif // #ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
+
 
 /* sus_kstat */
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
@@ -1495,11 +1699,15 @@ static void susfs_run_extra_works(struct work_struct *work) {
 }
 
 /* susfs_init */
-void susfs_init(void) {\
+void susfs_init(void) {
 	SUSFS_LOGI("Initializing susfs_extra_works\n");
 	INIT_WORK(&susfs_extra_works, susfs_run_extra_works);
+#ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
+	susfs_auto_mount_source_spoof_init();
+#endif
 	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");
 }
+
 
 /* No module exit is needed becuase it should never be a loadable kernel module */
 //void __init susfs_exit(void)

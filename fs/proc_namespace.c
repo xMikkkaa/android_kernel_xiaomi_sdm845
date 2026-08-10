@@ -12,6 +12,8 @@
 #include <linux/fs_struct.h>
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include <linux/susfs_def.h>
+#include <linux/susfs.h>
+#include <linux/dcache.h>
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include "proc/internal.h" /* only for get_proc_task() in ->open() */
 
@@ -116,6 +118,43 @@ static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	/* Mount source spoofing: replace raw block dev path with dm-verity path
+	 * for umounted (non-root) app processes to bypass direct block mount detection.
+	 */
+	if (READ_ONCE(susfs_hide_sus_mnts_for_non_su_procs) &&
+		susfs_is_current_proc_umounted_app()) {
+		char pathbuf[256];
+		char *mnt_target;
+		char spoofed_buf[SUSFS_MAX_LEN_PATHNAME];
+
+		/* Get the absolute mountpoint path string (e.g. "/vendor") */
+		mnt_target = dentry_path_raw(r->mnt_mountpoint, pathbuf, sizeof(pathbuf));
+		if (!IS_ERR(mnt_target) && !sb->s_op->show_devname &&
+			susfs_get_spoofed_mount_source(r->mnt_devname, mnt_target,
+						   spoofed_buf, sizeof(spoofed_buf))) {
+			mangle(m, spoofed_buf);
+			seq_putc(m, ' ');
+			err = seq_path_root(m, &mnt_path, &p->root, " \t\n\\");
+			if (err)
+				goto out;
+			seq_putc(m, ' ');
+			show_type(m, sb);
+			seq_puts(m, __mnt_is_readonly(mnt) ? " ro" : " rw");
+			err = show_sb_opts(m, sb);
+			if (err)
+				goto out;
+			show_mnt_opts(m, mnt);
+			if (sb->s_op->show_options2)
+				err = sb->s_op->show_options2(mnt, m, mnt_path.dentry);
+			else if (sb->s_op->show_options)
+				err = sb->s_op->show_options(m, mnt_path.dentry);
+			seq_puts(m, " 0 0\n");
+			goto out;
+		}
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 	if (sb->s_op->show_devname) {
 		err = sb->s_op->show_devname(m, mnt_path.dentry);
 		if (err)
@@ -197,6 +236,37 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	seq_puts(m, " - ");
 	show_type(m, sb);
 	seq_putc(m, ' ');
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	/* Mount source spoofing for mountinfo: same logic as show_vfsmnt.
+	 * Replace raw block device source with dm-verity path for umounted apps.
+	 */
+	if (READ_ONCE(susfs_hide_sus_mnts_for_non_su_procs) &&
+		susfs_is_current_proc_umounted_app() &&
+		!sb->s_op->show_devname) {
+		char pathbuf[256];
+		char *mnt_target;
+		char spoofed_buf[SUSFS_MAX_LEN_PATHNAME];
+
+		mnt_target = dentry_path_raw(r->mnt_mountpoint, pathbuf, sizeof(pathbuf));
+		if (!IS_ERR(mnt_target) &&
+			susfs_get_spoofed_mount_source(r->mnt_devname, mnt_target,
+						   spoofed_buf, sizeof(spoofed_buf))) {
+			mangle(m, spoofed_buf);
+			seq_puts(m, sb->s_flags & MS_RDONLY ? " ro" : " rw");
+			err = show_sb_opts(m, sb);
+			if (err)
+				goto out;
+			if (sb->s_op->show_options2) {
+				err = sb->s_op->show_options2(mnt, m, mnt->mnt_root);
+			} else if (sb->s_op->show_options)
+				err = sb->s_op->show_options(m, mnt->mnt_root);
+			seq_putc(m, '\n');
+			goto out;
+		}
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 	if (sb->s_op->show_devname) {
 		err = sb->s_op->show_devname(m, mnt->mnt_root);
 		if (err)
