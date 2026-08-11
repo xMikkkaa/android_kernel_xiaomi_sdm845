@@ -123,6 +123,9 @@ run_release_builds() {
         "--nse --dirty"
         "--nse --820 --dirty"
         "--nse --835 --dirty"
+        "--dynamic --dirty"
+        "--dynamic --820 --dirty"
+        "--dynamic --835 --dirty"
     )
 
     for release_command in "${release_commands[@]}"; do
@@ -369,6 +372,7 @@ show_help() {
     echo ""
     echo "  Variant Options:"
     echo "    --nse        Non-System_Ext Variant"
+    echo "    --dynamic    Dynamic Partition Variant (No fstab injection)"
     echo ""
     echo "  Audio Options:"
     echo "    --no-audio   Disable Audio Variant"
@@ -400,6 +404,11 @@ restore_gpu_oc() {
 #  Apply fstab variant
 # ─────────────────────────────────────────────────────────────────────────────
 apply_fstab_variant() {
+    if [ "${VARIANT}" = "dynamic" ]; then
+        log_info "Dynamic partition variant: skipping fstab injection..."
+        return
+    fi
+
     log_step "Applying fstab configuration..."
     cp "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak"
     
@@ -518,6 +527,9 @@ main() {
             --nse)
                 VARIANT="nse"
                 ;;
+            --dynamic)
+                VARIANT="dynamic"
+                ;;
 
             --no-audio)
                 DISABLE_AUDIO="true"
@@ -537,6 +549,10 @@ main() {
         KERNEL_NAME="${KERNEL_NAME}-NSE-Disable-Audio-OC${OC_VAL}"
     elif [ "${VARIANT}" = "nse" ]; then
         KERNEL_NAME="${KERNEL_NAME}-NSE-OC${OC_VAL}"
+    elif [ "${VARIANT}" = "dynamic" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
+        KERNEL_NAME="${KERNEL_NAME}-Dynamic-Disable-Audio-OC${OC_VAL}"
+    elif [ "${VARIANT}" = "dynamic" ]; then
+        KERNEL_NAME="${KERNEL_NAME}-Dynamic-OC${OC_VAL}"
     elif [ "${DISABLE_AUDIO}" = "true" ]; then
         KERNEL_NAME="${KERNEL_NAME}-Disable-Audio-OC${OC_VAL}"
     else
