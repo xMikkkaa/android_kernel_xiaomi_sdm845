@@ -9,7 +9,7 @@
 
 #define SCHED_HYDRA_AUTHOR   "xMikkkaa"
 #define SCHED_HYDRA_PROGNAME "HYDRA Game Thread Optimizer"
-#define SCHED_HYDRA_VERSION  "0.8"
+#define SCHED_HYDRA_VERSION  "0.9"
 
 #define HYDRA_MAX_CLUSTERS 4
 

@@ -29,6 +29,7 @@
 #include <linux/seq_file.h>
 #include <linux/cpuhotplug.h>
 #include <linux/slab.h>
+#include <linux/sort.h>
 #if defined(CONFIG_UCLAMP_TASK)
 #include <uapi/linux/sched/types.h>
 #endif
@@ -125,12 +126,23 @@ static unsigned long hydra_get_cpu_capacity(int cpu)
 	return capacity_orig_of(cpu);
 }
 
+struct hydra_tier {
+	unsigned long cap;
+	cpumask_t mask;
+};
+
+static int hydra_tier_cmp(const void *a, const void *b)
+{
+	const struct hydra_tier *ta = a;
+	const struct hydra_tier *tb = b;
+	return (ta->cap > tb->cap) - (ta->cap < tb->cap);
+}
+
 static void hydra_detect_clusters(void)
 {
-	int cpu, i, j;
+	int cpu, i;
 	int temp_count = 0;
-	cpumask_t temp_masks[16];
-	unsigned long temp_caps[16];
+	struct hydra_tier tiers[16];
 
 	mutex_lock(&hydra_topo_mutex);
 	if (hydra_cluster_count > 0) {
@@ -139,8 +151,8 @@ static void hydra_detect_clusters(void)
 	}
 
 	for (i = 0; i < 16; i++) {
-		cpumask_clear(&temp_masks[i]);
-		temp_caps[i] = 0;
+		cpumask_clear(&tiers[i].mask);
+		tiers[i].cap = 0;
 	}
 
 	for_each_possible_cpu(cpu) {
@@ -148,55 +160,47 @@ static void hydra_detect_clusters(void)
 		bool found = false;
 
 		for (i = 0; i < temp_count; i++) {
-			unsigned long max_c = max(cap, temp_caps[i]);
-			unsigned long min_c = min(cap, temp_caps[i]);
+			unsigned long max_c = max(cap, tiers[i].cap);
+			unsigned long min_c = min(cap, tiers[i].cap);
 			if (max_c - min_c <= (max_c * 6) / 100) {
-				cpumask_set_cpu(cpu, &temp_masks[i]);
-				temp_caps[i] = max_c;
+				cpumask_set_cpu(cpu, &tiers[i].mask);
+				tiers[i].cap = max_c;
 				found = true;
 				break;
 			}
 		}
 		if (!found && temp_count < 16) {
-			cpumask_set_cpu(cpu, &temp_masks[temp_count]);
-			temp_caps[temp_count] = cap;
+			cpumask_set_cpu(cpu, &tiers[temp_count].mask);
+			tiers[temp_count].cap = cap;
 			temp_count++;
 		}
 	}
 
-	for (i = 0; i < temp_count - 1; i++) {
-		for (j = i + 1; j < temp_count; j++) {
-			if (temp_caps[i] > temp_caps[j]) {
-				unsigned long tmp_cap = temp_caps[i];
-				cpumask_t tmp_mask;
-				
-				temp_caps[i] = temp_caps[j];
-				temp_caps[j] = tmp_cap;
-				
-				cpumask_copy(&tmp_mask, &temp_masks[i]);
-				cpumask_copy(&temp_masks[i], &temp_masks[j]);
-				cpumask_copy(&temp_masks[j], &tmp_mask);
-			}
-		}
-	}
+	/* Sort using kernel's sort() API (ascending) */
+	sort(tiers, temp_count, sizeof(struct hydra_tier), hydra_tier_cmp, NULL);
 
+	/* 
+	 * Fallback Merge: If a device hypothetically has 5+ clusters,
+	 * merge the lowest clusters together. HYDRA_MAX_CLUSTERS = 4 is 
+	 * sufficient for all modern mobile SoCs (1+3+4).
+	 */
 	while (temp_count > HYDRA_MAX_CLUSTERS) {
-		cpumask_or(&temp_masks[1], &temp_masks[0], &temp_masks[1]);
+		cpumask_or(&tiers[1].mask, &tiers[0].mask, &tiers[1].mask);
 		for (i = 0; i < temp_count - 1; i++) {
-			cpumask_copy(&temp_masks[i], &temp_masks[i + 1]);
-			temp_caps[i] = temp_caps[i + 1];
+			cpumask_copy(&tiers[i].mask, &tiers[i + 1].mask);
+			tiers[i].cap = tiers[i + 1].cap;
 		}
 		temp_count--;
 	}
 
-	if (temp_count == 1 && cpumask_weight(&temp_masks[0]) == num_possible_cpus()) {
+	if (temp_count == 1 && cpumask_weight(&tiers[0].mask) == num_possible_cpus()) {
 		pr_warn_ratelimited("hydra: cluster detection unreliable, retrying later\n");
 	} else {
 		for (i = 0; i < temp_count; i++) {
-			cpumask_copy(&hydra_clusters[i], &temp_masks[i]);
-			hydra_cluster_capacity[i] = temp_caps[i];
+			cpumask_copy(&hydra_clusters[i], &tiers[i].mask);
+			hydra_cluster_capacity[i] = tiers[i].cap;
 			pr_info("hydra: tier %d (cap ~%lu) mask: %*pbl\n",
-				i, temp_caps[i], cpumask_pr_args(&hydra_clusters[i]));
+				i, tiers[i].cap, cpumask_pr_args(&hydra_clusters[i]));
 		}
 		hydra_cluster_count = temp_count;
 	}
@@ -804,28 +808,39 @@ static int sched_hydra_stats_handler(struct ctl_table *table, int write,
 				     void __user *buffer, size_t *lenp,
 				     loff_t *ppos)
 {
-	char stats_buf[1024];
+	char *stats_buf;
 	struct ctl_table tmp_table;
 	unsigned int big_core_freq = 0;
 	bool is_throttled = false;
 	int count = 0;
 	int i;
+	int ret;
 
 	if (write)
 		return -EPERM;
 
+	stats_buf = kzalloc(1024, GFP_KERNEL);
+	if (!stats_buf)
+		return -ENOMEM;
+
 	mutex_lock(&hydra_topo_mutex);
 	if (hydra_cluster_count > 0) {
-		int cpu = cpumask_first(&hydra_clusters[hydra_cluster_count - 1]);
-
-		big_core_freq = cpufreq_quick_get(cpu);
+		int cpu;
+		/* Scan all big/prime cores for any throttle indication */
+		for_each_cpu_and(cpu, &hydra_clusters[hydra_cluster_count - 1], cpu_online_mask) {
+			unsigned int f = cpufreq_quick_get(cpu);
+			if (f > 0 && f < sched_hydra_throttle_freq) {
+				is_throttled = true;
+				break;
+			}
+			/* Keep track of max frequency */
+			if (f > big_core_freq)
+				big_core_freq = f;
+		}
 	}
 	mutex_unlock(&hydra_topo_mutex);
 
-	if (big_core_freq > 0 && big_core_freq < sched_hydra_throttle_freq)
-		is_throttled = true;
-
-	count += snprintf(stats_buf + count, sizeof(stats_buf) - count,
+	count += snprintf(stats_buf + count, 1024 - count,
 			 "version=%s\n"
 			 "enabled=%d\n"
 			 "pid=%d\n"
@@ -844,10 +859,10 @@ static int sched_hydra_stats_handler(struct ctl_table *table, int write,
 			 big_core_freq);
 
 	mutex_lock(&hydra_topo_mutex);
-	count += snprintf(stats_buf + count, sizeof(stats_buf) - count,
+	count += snprintf(stats_buf + count, 1024 - count,
 			  "clusters: %d\n", hydra_cluster_count);
 	for (i = 0; i < hydra_cluster_count; i++) {
-		count += snprintf(stats_buf + count, sizeof(stats_buf) - count,
+		count += snprintf(stats_buf + count, 1024 - count,
 				  "tier %d: cap=%lu cpus=%d mask=%*pbl\n",
 				  i, hydra_cluster_capacity[i],
 				  cpumask_weight(&hydra_clusters[i]),
@@ -859,7 +874,9 @@ static int sched_hydra_stats_handler(struct ctl_table *table, int write,
 	tmp_table.data = stats_buf;
 	tmp_table.maxlen = count;
 
-	return proc_dostring(&tmp_table, write, buffer, lenp, ppos);
+	ret = proc_dostring(&tmp_table, write, buffer, lenp, ppos);
+	kfree(stats_buf);
+	return ret;
 }
 
 static int sched_hydra_depth_handler(struct ctl_table *table, int write,
@@ -1041,3 +1058,4 @@ static int __init sched_init_hydra(void)
 	return 0;
 }
 late_initcall(sched_init_hydra);
+
