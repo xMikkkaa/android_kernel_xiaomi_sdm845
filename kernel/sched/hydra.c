@@ -27,6 +27,11 @@
 #include <linux/ratelimit.h>
 #include <linux/cpufreq.h>
 #include <linux/seq_file.h>
+#include <linux/cpuhotplug.h>
+#include <linux/slab.h>
+#if defined(CONFIG_UCLAMP_TASK)
+#include <uapi/linux/sched/types.h>
+#endif
 #include <trace/events/sched.h>
 #include "sched.h"
 
@@ -42,6 +47,9 @@ int sched_hydra_throttle_freq = 1400000;
 int sched_hydra_heavy_util = 300;
 int sched_hydra_light_util = 100;
 int sched_hydra_cluster_depth = 0;
+int sched_hydra_uclamp_min = 0;
+char sched_hydra_thread_patterns[256] = "";
+
 
 #ifdef CONFIG_SCHED_HYDRA_DEBUG
 char hydra_debug_fake_clusters[128] = "";
@@ -200,13 +208,34 @@ static void hydra_detect_clusters(void)
 static bool hydra_match_thread(struct task_struct *t)
 {
 	int i;
+	char *patterns;
+	char *token, *rest;
+	bool matched = false;
 
-	for (i = 0; i < HYDRA_NUM_COMM_PATTERNS; i++) {
+	/* 1. Check static patterns first */
+	for (i = 0; i < ARRAY_SIZE(hydra_comm_patterns); i++) {
 		if (strnstr(t->comm, hydra_comm_patterns[i], TASK_COMM_LEN))
 			return true;
 	}
 
-	return false;
+	/* 2. Check dynamic patterns if configured */
+	if (strlen(sched_hydra_thread_patterns) == 0)
+		return false;
+
+	patterns = kstrdup(sched_hydra_thread_patterns, GFP_KERNEL);
+	if (!patterns)
+		return false;
+
+	rest = patterns;
+	while ((token = strsep(&rest, ",")) != NULL) {
+		token = strim(token);
+		if (strlen(token) > 0 && strnstr(t->comm, token, TASK_COMM_LEN)) {
+			matched = true;
+			break;
+		}
+	}
+	kfree(patterns);
+	return matched;
 }
 
 /* ======================== Revert logic =================================== */
@@ -244,6 +273,16 @@ static bool hydra_revert_all_threads(bool clear_state, int expected_pid)
 		if (t) {
 			int err;
 			set_user_nice(t, state->original_nice);
+#if defined(CONFIG_UCLAMP_TASK)
+			if (sched_hydra_uclamp_min > 0) {
+				struct sched_attr attr;
+				memset(&attr, 0, sizeof(attr));
+				attr.size = sizeof(attr);
+				attr.sched_util_min = 0;
+				attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
+				sched_setattr(t, &attr);
+			}
+#endif
 			err = set_cpus_allowed_ptr(t, &state->original_mask);
 			if (err)
 				pr_warn_ratelimited("hydra: affinity set failed for tid %d (err=%d)\n",
@@ -374,8 +413,19 @@ static void hydra_optimize_threads(pid_t pid)
 			raw_spin_unlock_irqrestore(&t->pi_lock, flags);
 		}
 
+
 		/* Nice boost is always applied regardless of cpumask availability */
 		set_user_nice(t, sched_hydra_nice);
+#if defined(CONFIG_UCLAMP_TASK)
+		if (sched_hydra_uclamp_min > 0) {
+			struct sched_attr attr;
+			memset(&attr, 0, sizeof(attr));
+			attr.size = sizeof(attr);
+			attr.sched_util_min = sched_hydra_uclamp_min;
+			attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
+			sched_setattr(t, &attr);
+		}
+#endif
 
 		/* Cpumask assignment only when big cores are online */
 		if (sched_hydra_smart_mode == 1 && has_big_cores) {
@@ -529,6 +579,17 @@ static void hydra_exit_work_fn(struct work_struct *work)
 }
 
 /* ======================== Tracepoint probes ============================== */
+
+static void hydra_queue_work(struct work_struct *work);
+
+static int hydra_cpu_hotplug_callback(unsigned int cpu)
+{
+	int pid = READ_ONCE(sched_hydra_pid);
+	if (pid > 0 && static_branch_likely(&sched_hydra_enable_key))
+		hydra_queue_work(&hydra_fork_work); /* Re-evaluates cpumask */
+	return 0;
+}
+
 
 static void hydra_queue_work(struct work_struct *work)
 {
@@ -848,9 +909,33 @@ static int sched_hydra_debug_handler(struct ctl_table *table, int write,
 }
 #endif
 
+
+static int sched_hydra_patterns_handler(struct ctl_table *table, int write,
+				     void __user *buffer, size_t *lenp,
+				     loff_t *ppos)
+{
+	if (write && !capable(CAP_SYS_NICE))
+		return -EPERM;
+	return proc_dostring(table, write, buffer, lenp, ppos);
+}
+
 /* ======================== Sysctl table =================================== */
 
 static struct ctl_table hydra_sysctls[] = {
+	{
+		.procname	= "hydra_thread_patterns",
+		.data		= sched_hydra_thread_patterns,
+		.maxlen		= sizeof(sched_hydra_thread_patterns),
+		.mode		= 0644,
+		.proc_handler	= sched_hydra_patterns_handler,
+	},
+	{
+		.procname	= "hydra_uclamp_min",
+		.data		= &sched_hydra_uclamp_min,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= sched_hydra_simple_int_handler,
+	},
 	{
 		.procname	= "hydra_enable",
 		.data		= &sched_hydra_enable,
@@ -934,9 +1019,14 @@ static int __init sched_init_hydra(void)
 {
 	hydra_detect_clusters();
 
+
 	hydra_wq = alloc_workqueue("hydra", WQ_HIGHPRI, 0);
 	if (!hydra_wq)
 		pr_err("hydra: failed to allocate high-priority workqueue, falling back to system_wq\n");
+
+	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "sched/hydra:online",
+				  hydra_cpu_hotplug_callback,
+				  hydra_cpu_hotplug_callback);
 
 	INIT_WORK(&hydra_fork_work, hydra_fork_work_fn);
 	INIT_WORK(&hydra_exit_work, hydra_exit_work_fn);

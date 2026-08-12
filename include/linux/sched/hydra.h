@@ -9,7 +9,7 @@
 
 #define SCHED_HYDRA_AUTHOR   "xMikkkaa"
 #define SCHED_HYDRA_PROGNAME "HYDRA Game Thread Optimizer"
-#define SCHED_HYDRA_VERSION  "0.7"
+#define SCHED_HYDRA_VERSION  "0.8"
 
 #define HYDRA_MAX_CLUSTERS 4
 
@@ -25,12 +25,8 @@
 #define hydra_cpus_allowed(t) ((t)->cpus_allowed)
 #endif
 
-/*
- * Thread comm patterns matched by HYDRA.
- * To add new patterns, append to this array and rebuild the kernel.
- * Matching uses strnstr() against the task's comm string.
- */
-static const char * const hydra_comm_patterns[] = {
+/* Static Thread Pattern Matching */
+static const char *hydra_comm_patterns[] = {
 	"RenderThread",
 	"UnityMain",
 	"UnityGfx",
@@ -40,10 +36,8 @@ static const char * const hydra_comm_patterns[] = {
 	"glthread",
 	"kgsl",
 	"ANGLE",
-	"FrameWorker",
+	"FrameWorker"
 };
-
-#define HYDRA_NUM_COMM_PATTERNS ARRAY_SIZE(hydra_comm_patterns)
 
 struct hydra_thread_state {
 	pid_t tid;
