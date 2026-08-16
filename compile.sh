@@ -120,12 +120,15 @@ run_release_builds() {
         "--dirty"
         "--820 --dirty"
         "--835 --dirty"
+        "--844 --dirty"
         "--nse --dirty"
         "--nse --820 --dirty"
         "--nse --835 --dirty"
+        "--nse --844 --dirty"
         "--dynamic --dirty"
         "--dynamic --820 --dirty"
         "--dynamic --835 --dirty"
+        "--dynamic --844 --dirty"
     )
 
     for release_command in "${release_commands[@]}"; do
@@ -369,6 +372,7 @@ show_help() {
     echo "    --805        805 MHz GPU Frequency (Default)"
     echo "    --820        820 MHz GPU Frequency"
     echo "    --835        835 MHz GPU Frequency"
+    echo "    --844        844 MHz GPU Frequency"
     echo ""
     echo "  Variant Options:"
     echo "    --nse        Non-System_Ext Variant"
@@ -385,8 +389,8 @@ show_help() {
 apply_gpu_oc() {
     log_step "Applying GPU Overclock: ${OC_VAL} MHz"
     
-    sed -i -E "s/8(05|20|35)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
-    sed -i -E "s/8(05|20|35)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
+    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
+    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
     
     log_success "GPU frequency set to ${OC_VAL} MHz in DT and Clock Driver"
 }
@@ -523,6 +527,9 @@ main() {
                 ;;
             --835)
                 OC_VAL="835"
+                ;;
+            --844)
+                OC_VAL="844"
                 ;;
             --nse)
                 VARIANT="nse"
