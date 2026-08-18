@@ -52,7 +52,7 @@ JOBS="$(nproc --all)"
 
 # Kernel name from defconfig LOCALVERSION
 OC_VAL="805"
-KERNEL_NAME="Chimera-V4"
+KERNEL_NAME="Chimera-CI"
 
 # Build variant (default or nse)
 VARIANT="default"
@@ -70,6 +70,7 @@ export PATH="${CLANG_BIN}:${PATH}"
 export ARCH="${ARCH}"
 export SUBARCH="${ARCH}"
 export KBUILD_BUILD_USER="xMikkkaa"
+export KBUILD_BUILD_HOST="Sunny"
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Make arguments
