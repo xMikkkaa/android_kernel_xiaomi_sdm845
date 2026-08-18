@@ -68,10 +68,10 @@ jobs:
 
     - name: Build Kernel Release
       run: |
-        START_TIME=$(date +%B)
+        START_TIME=$(date +%s)
         chmod +x compile.sh
         ./compile.sh --release
-        END_TIME=$(date +%B)
+        END_TIME=$(date +%s)
         DIFF=$((END_TIME - START_TIME))
         echo "DURATION=$((DIFF / 60))m $((DIFF % 60))s" >> $GITHUB_ENV
         
