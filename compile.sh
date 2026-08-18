@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Neutron Clang toolchain
-CLANG_DIR="/home/mik/xMik-Project/toolchains/neutron-clang"
+CLANG_DIR="${KERNEL_DIR}/neutron-clang"
 CLANG_BIN="${CLANG_DIR}/bin"
 
 # AnyKernel3 directory (for flashable zip packaging)

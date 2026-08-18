@@ -1,0 +1,51 @@
+name: Sync ReSukiSU
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Runs every 6 hours
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        ref: resukisu
+        submodules: recursive
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Git Identity
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Update KernelSU Submodule
+      id: update
+      run: |
+        cd KernelSU
+        git fetch origin main
+        
+        CURRENT_COMMIT=$(git rev-parse HEAD)
+        TARGET_COMMIT=$(git rev-parse origin/main)
+        
+        if [ "$CURRENT_COMMIT" != "$TARGET_COMMIT" ]; then
+          echo "Updates found: $CURRENT_COMMIT -> $TARGET_COMMIT"
+          git checkout origin/main
+          echo "updated=true" >> $GITHUB_OUTPUT
+        else
+          echo "No updates found in KernelSU."
+          echo "updated=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Commit and Push Changes
+      if: steps.update.outputs.updated == 'true'
+      run: |
+        git add KernelSU
+        COMMIT_MSG=$(cd KernelSU && git log -1 --pretty=format:"%s")
+        git commit -m "sync(kernelsu): update submodule to latest main
+        
+        $COMMIT_MSG"
+        git push origin resukisu

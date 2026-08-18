@@ -1,0 +1,162 @@
+name: Build Kernel
+
+on:
+  push:
+    branches: [ "main", "master", "v5", "dev", "rebase", "resukisu" ]
+  pull_request:
+    branches: [ "main", "master", "v5", "dev", "rebase", "resukisu" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev zip unzip curl git python3 python3-requests \
+          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-none-eabi
+          
+    - name: Cache Neutron Clang
+      id: cache-neutron
+      uses: actions/cache@v4
+      with:
+        path: neutron-clang
+        key: neutron-clang-cache
+
+    - name: Setup Neutron Clang
+      run: |
+        mkdir -p neutron-clang
+        cd neutron-clang
+        if [ ! -f "antman" ]; then
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+        fi
+        ./antman -S
+
+    - name: Add Neutron Clang to PATH
+      run: |
+        echo "$(pwd)/neutron-clang/bin" >> $GITHUB_PATH
+        
+    - name: Verify Compiler Version
+      run: |
+        echo "=== Compiler Versions ==="
+        clang --version
+        ld.lld --version
+
+    - name: Clone AnyKernel3
+      run: |
+        # Clone AnyKernel3 repository
+        mkdir -p tools
+        cd tools
+        git clone https://github.com/xMikkkaa/AnyKernel3.git AnyKernel3
+
+    - name: Apply SELinux Hide Patch to KernelSU
+      run: |
+        if [ -f "scripts/ksu_selinux_hide.patch" ]; then
+          cd KernelSU
+          patch -p1 < ../scripts/ksu_selinux_hide.patch
+        fi
+
+    - name: Build Kernel Release
+      run: |
+        START_TIME=$(date +%s)
+        chmod +x compile.sh
+        ./compile.sh --release
+        END_TIME=$(date +%s)
+        DIFF=$((END_TIME - START_TIME))
+        echo "DURATION=$((DIFF / 60))m $((DIFF % 60))s" >> $GITHUB_ENV
+        
+        # Calculate ReSukiSU version
+        KSU_COMMITS=$(cd KernelSU && git rev-list --count HEAD)
+        KSU_VERSION=$((30000 + KSU_COMMITS + 700))
+        
+        # Rename output zips to include ReSukiSU version
+        for zip in out/zip/*.zip; do
+            [ -e "$zip" ] || continue
+            BASENAME=$(basename "$zip" .zip)
+            mv "$zip" "out/zip/${BASENAME}-${KSU_VERSION}.zip"
+        done
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Chimera-Kernel-ZIPs
+        path: out/zip/*.zip
+
+    - name: Telegram Notification & Commit Log
+      env:
+        TG_TOKEN: ${{ secrets.TG_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      run: |
+        BRANCH=${GITHUB_REF_NAME}
+        COMMIT=$(git rev-parse --short HEAD)
+        
+        # Determine commit message source (KernelSU or Chimera)
+        if git diff-tree --no-commit-id --name-only -r HEAD | grep -q "KernelSU"; then
+            # KernelSU was updated
+            RAW_MSG=$(cd KernelSU && git log -1 --pretty=format:"%s")
+            COMMIT_MSG="[ReSukiSU Update] ${RAW_MSG}"
+        else
+            # Chimera was updated
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+        fi
+        
+        # Prepare HTML formatted caption
+        CAPTION="<b>Chimera-CI</b>
+        Branch: ${BRANCH}
+        #ci_${COMMIT}
+        Duration: ${{ env.DURATION }}
+        
+        <pre><code class=\"language-copy\">${COMMIT_MSG}</code></pre>"
+        
+        export CAPTION
+        
+        # Python script to send Media Group (Max 10 per group, 12 files total)
+        python3 -c '
+        import os
+        import glob
+        import requests
+        import sys
+        import json
+        
+        bot_token = os.environ.get("TG_TOKEN")
+        chat_id = os.environ.get("TG_CHAT_ID")
+        caption = os.environ.get("CAPTION")
+        
+        files = sorted(glob.glob("out/zip/*.zip"))
+        if not files:
+            print("No zip files found to send!")
+            sys.exit(0)
+            
+        chunks = [files[i:i + 10] for i in range(0, len(files), 10)]
+        
+        for i, chunk in enumerate(chunks):
+            media = []
+            files_to_upload = {}
+            for j, f in enumerate(chunk):
+                media_item = {"type": "document", "media": f"attach://file{j}"}
+                if i == len(chunks) - 1 and j == len(chunk) - 1:
+                    media_item["caption"] = caption
+                    media_item["parse_mode"] = "HTML"
+                media.append(media_item)
+                files_to_upload[f"file{j}"] = open(f, "rb")
+            
+            data = {"chat_id": chat_id, "media": json.dumps(media)}
+            
+            print(f"Sending chunk {i+1}/{len(chunks)} with {len(chunk)} files...")
+            response = requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMediaGroup",
+                data=data,
+                files=files_to_upload
+            )
+            print(response.json())
+        '
