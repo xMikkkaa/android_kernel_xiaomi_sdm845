@@ -68,10 +68,10 @@ jobs:
 
     - name: Build Kernel Release
       run: |
-        START_TIME=$(date +%s)
+        START_TIME=$(date +%B)
         chmod +x compile.sh
         ./compile.sh --release
-        END_TIME=$(date +%s)
+        END_TIME=$(date +%B)
         DIFF=$((END_TIME - START_TIME))
         echo "DURATION=$((DIFF / 60))m $((DIFF % 60))s" >> $GITHUB_ENV
         
@@ -103,17 +103,17 @@ jobs:
         # Determine commit message source (KernelSU or Chimera)
         if git diff-tree --no-commit-id --name-only -r HEAD | grep -q "KernelSU"; then
             # KernelSU was updated
-            RAW_MSG=$(cd KernelSU && git log -1 --pretty=format:"%s")
+            RAW_MSG=$(cd KernelSU && git log -1 --pretty=format:"%B")
             COMMIT_MSG="[ReSukiSU Update] ${RAW_MSG}"
         else
             # Chimera was updated
-            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+            COMMIT_MSG=$(git log -1 --pretty=format:"%B")
         fi
         
         # Prepare HTML formatted caption
         CAPTION="<b>Chimera-CI</b>
         Branch: ${BRANCH}
-        #ci_${COMMIT}
+        <a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#ci_${COMMIT}</a>
         Duration: ${{ env.DURATION }}
         
         <pre><code class=\"language-copy\">${COMMIT_MSG}</code></pre>"
@@ -137,7 +137,7 @@ jobs:
             print("No zip files found to send!")
             sys.exit(0)
             
-        chunks = [files[i:i + 10] for i in range(0, len(files), 10)]
+        chunks = [files[i:i + 2] for i in range(0, len(files), 2)]
         
         for i, chunk in enumerate(chunks):
             media = []
