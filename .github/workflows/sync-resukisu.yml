@@ -15,25 +15,23 @@ jobs:
         ref: resukisu
         submodules: recursive
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.PAT_TOKEN }}
 
-    - name: Setup Git Identity
+    - name: Check for KernelSU Updates
+      id: update
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-
-    - name: Update KernelSU Submodule
-      id: update
-      run: |
+        
         cd KernelSU
         git fetch origin main
         
         CURRENT_COMMIT=$(git rev-parse HEAD)
-        TARGET_COMMIT=$(git rev-parse origin/main)
+        TARGET_COMMIT=$(git rev-parse FETCH_HEAD)
         
         if [ "$CURRENT_COMMIT" != "$TARGET_COMMIT" ]; then
           echo "Updates found: $CURRENT_COMMIT -> $TARGET_COMMIT"
-          git checkout origin/main
+          git checkout FETCH_HEAD
           echo "updated=true" >> $GITHUB_OUTPUT
         else
           echo "No updates found in KernelSU."
