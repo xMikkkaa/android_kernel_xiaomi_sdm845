@@ -2,9 +2,9 @@ name: Build Kernel
 
 on:
   push:
-    branches: [ "main", "master", "v5", "dev", "rebase", "resukisu" ]
+    branches: [ "resukisu" ]
   pull_request:
-    branches: [ "main", "master", "v5", "dev", "rebase", "resukisu" ]
+    branches: [ "resukisu" ]
   workflow_dispatch:
 
 jobs:
