@@ -110,6 +110,9 @@ jobs:
             COMMIT_MSG=$(git log -1 --pretty=format:"%B")
         fi
         
+        # Escape HTML characters in COMMIT_MSG for Telegram
+        COMMIT_MSG=$(echo "$COMMIT_MSG" | sed 's/&/&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        
         # Prepare HTML formatted caption
         CAPTION="<b>Chimera-CI</b>
         Branch: ${BRANCH}
