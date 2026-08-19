@@ -114,7 +114,7 @@ jobs:
         COMMIT_MSG=$(echo "$COMMIT_MSG" | sed 's/&/&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
         
         # Prepare HTML formatted caption
-        CAPTION="<b>Chimera-CI</b>
+        CAPTION="<b>Chimera-CI</b> | <a href=\"https://t.me/ReSukiSU\">ReSukiSU Version: ${KSU_VERSION}</a>
         Branch: ${BRANCH}
         <a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#ci_${COMMIT}</a>
         Duration: ${{ env.DURATION }}
