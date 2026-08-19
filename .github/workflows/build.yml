@@ -96,6 +96,8 @@ jobs:
       env:
         TG_TOKEN: ${{ secrets.TG_TOKEN }}
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        TG_DUMP_CHAT_ID: ${{ secrets.TG_DUMP_CHAT_ID }}
+        TG_DUMP_THREAD_ID: ${{ secrets.TG_DUMP_THREAD_ID }}
       run: |
         BRANCH=${GITHUB_REF_NAME}
         COMMIT=$(git rev-parse --short HEAD)
@@ -123,7 +125,7 @@ jobs:
         
         export CAPTION
         
-        # Python script to send Media Group (Max 10 per group, 12 files total)
+        # Python script to send Media Group using file_id caching (bypasses 50MB limit)
         python3 -c '
         import os
         import glob
@@ -133,6 +135,8 @@ jobs:
         
         bot_token = os.environ.get("TG_TOKEN")
         chat_id = os.environ.get("TG_CHAT_ID")
+        dump_chat_id = os.environ.get("TG_DUMP_CHAT_ID")
+        dump_thread_id = os.environ.get("TG_DUMP_THREAD_ID")
         caption = os.environ.get("CAPTION")
         
         files = sorted(glob.glob("out/zip/*.zip"))
@@ -140,26 +144,49 @@ jobs:
             print("No zip files found to send!")
             sys.exit(0)
             
-        chunks = [files[i:i + 2] for i in range(0, len(files), 2)]
+        file_ids = []
+        
+        # Phase 1: Upload to Dump Chat (Forum Topic) to get file_ids
+        for i, f in enumerate(files):
+            print(f"Uploading {f} to Dump Chat ({i+1}/{len(files)})...")
+            data = {"chat_id": dump_chat_id, "disable_notification": True}
+            if dump_thread_id:
+                data["message_thread_id"] = dump_thread_id
+            
+            with open(f, "rb") as file_data:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendDocument",
+                    data=data,
+                    files={"document": file_data}
+                ).json()
+                
+            if response.get("ok"):
+                file_ids.append(response["result"]["document"]["file_id"])
+            else:
+                print(f"Failed to upload {f}:", response)
+        
+        if not file_ids:
+            print("Failed to upload any files to dump chat.")
+            sys.exit(1)
+            
+        # Phase 2: Grouping and sending to Main Chat
+        chunks = [file_ids[:10], file_ids[10:]] if len(file_ids) > 10 else [file_ids]
         
         for i, chunk in enumerate(chunks):
+            if not chunk: continue
             media = []
-            files_to_upload = {}
-            for j, f in enumerate(chunk):
-                media_item = {"type": "document", "media": f"attach://file{j}"}
+            for j, fid in enumerate(chunk):
+                media_item = {"type": "document", "media": fid}
                 if i == len(chunks) - 1 and j == len(chunk) - 1:
                     media_item["caption"] = caption
                     media_item["parse_mode"] = "HTML"
                 media.append(media_item)
-                files_to_upload[f"file{j}"] = open(f, "rb")
             
             data = {"chat_id": chat_id, "media": json.dumps(media)}
-            
-            print(f"Sending chunk {i+1}/{len(chunks)} with {len(chunk)} files...")
+            print(f"Sending MediaGroup {i+1}/{len(chunks)} to Main Chat...")
             response = requests.post(
                 f"https://api.telegram.org/bot{bot_token}/sendMediaGroup",
-                data=data,
-                files=files_to_upload
+                data=data
             )
             print(response.json())
         '
