@@ -42,7 +42,7 @@ jobs:
       if: steps.update.outputs.updated == 'true'
       run: |
         git add KernelSU
-        COMMIT_MSG=$(cd KernelSU && git log -1 --pretty=format:"%s")
+        COMMIT_MSG=$(cd KernelSU && git log -1 --pretty=format:"%B")
         git commit -m "sync(kernelsu): update submodule to latest main
         
         $COMMIT_MSG"
