@@ -75,9 +75,9 @@ jobs:
         DIFF=$((END_TIME - START_TIME))
         echo "DURATION=$((DIFF / 60))m $((DIFF % 60))s" >> $GITHUB_ENV
         
-        # Calculate ReSukiSU version
-        KSU_COMMITS=$(cd KernelSU && git rev-list --count HEAD)
-        KSU_VERSION=$((30000 + KSU_COMMITS + 700))
+        # Read ReSukiSU version directly from build log
+        KSU_VERSION=$(grep -m1 "ReSukiSU version code:" out/build.log | grep -o '[0-9]*$')
+        echo "KSU_VERSION=${KSU_VERSION}" >> $GITHUB_ENV
         
         # Rename output zips to include ReSukiSU version
         for zip in out/zip/*.zip; do
@@ -163,3 +163,18 @@ jobs:
             )
             print(response.json())
         '
+
+    - name: Notify Telegram on Failure
+      if: failure()
+      env:
+        TG_TOKEN: ${{ secrets.TG_TOKEN }}
+        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      run: |
+        COMMIT=$(git rev-parse --short HEAD)
+        MSG="⚠️ <b>Build Failed</b> · Chimera-CI%0A"
+        MSG+="<code>${GITHUB_REF_NAME}</code> · <code>${COMMIT}</code>%0A"
+        MSG+="<a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#${GITHUB_RUN_NUMBER} · View logs</a>"
+        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          -d "chat_id=${TG_CHAT_ID}" \
+          -d "parse_mode=HTML" \
+          -d "text=${MSG}"
