@@ -27,7 +27,7 @@ jobs:
           
     - name: Cache Neutron Clang
       id: cache-neutron
-      uses: actions/cache@v7
+      uses: actions/cache@v6
       with:
         path: neutron-clang
         key: neutron-clang-cache
