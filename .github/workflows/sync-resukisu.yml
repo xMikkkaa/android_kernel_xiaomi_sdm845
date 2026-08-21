@@ -41,13 +41,17 @@ jobs:
             # Retrieve upstream commit message
             RAW_MSG=$(git log -1 --pretty=format:"%B" $COMMIT)
             
+            # Retrieve upstream author
+            AUTHOR_NAME=$(git log -1 --pretty=format:"%an" $COMMIT)
+            AUTHOR_EMAIL=$(git log -1 --pretty=format:"%ae" $COMMIT)
+            
             # Format cross-repo links
             COMMIT_MSG=$(echo "$RAW_MSG" | sed -E '\''s/#([0-9]+)/ReSukiSU\/ReSukiSU#\1/g'\'')
             
             cd ..
             git add KernelSU
             
-            git commit -m "sync(kernelsu): update submodule to ${COMMIT:0:7}
+            git commit --author="$AUTHOR_NAME <$AUTHOR_EMAIL>" -m "sync(kernelsu): update submodule to ${COMMIT:0:7}
             
             $COMMIT_MSG"
             
