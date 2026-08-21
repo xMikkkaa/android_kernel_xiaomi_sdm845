@@ -17,8 +17,7 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.PAT_TOKEN }}
 
-    - name: Check for KernelSU Updates
-      id: update
+    - name: Sync ReSukiSU Commits
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -31,19 +30,32 @@ jobs:
         
         if [ "$CURRENT_COMMIT" != "$TARGET_COMMIT" ]; then
           echo "Updates found: $CURRENT_COMMIT -> $TARGET_COMMIT"
-          git checkout FETCH_HEAD
-          echo "updated=true" >> $GITHUB_OUTPUT
+          
+          # Fetch commit sequence from oldest to newest
+          COMMITS=$(git log --reverse --format="%H" ${CURRENT_COMMIT}..${TARGET_COMMIT})
+          
+          for COMMIT in $COMMITS; do
+            echo "Syncing commit: $COMMIT"
+            git checkout $COMMIT
+            
+            # Retrieve upstream commit message
+            COMMIT_MSG=$(git log -1 --pretty=format:"%B" $COMMIT)
+            
+            cd ..
+            git add KernelSU
+            
+            git commit -m "sync(kernelsu): update submodule to ${COMMIT:0:7}
+            
+            $COMMIT_MSG"
+            
+            # Push incrementally to trigger independent CI builds
+            git push origin resukisu
+            
+            # Delay to ensure GitHub Actions processes the push event
+            sleep 5
+            
+            cd KernelSU
+          done
         else
           echo "No updates found in KernelSU."
-          echo "updated=false" >> $GITHUB_OUTPUT
         fi
-
-    - name: Commit and Push Changes
-      if: steps.update.outputs.updated == 'true'
-      run: |
-        git add KernelSU
-        COMMIT_MSG=$(cd KernelSU && git log -1 --pretty=format:"%B")
-        git commit -m "sync(kernelsu): update submodule to latest main
-        
-        $COMMIT_MSG"
-        git push origin resukisu
