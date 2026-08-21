@@ -39,7 +39,10 @@ jobs:
             git checkout $COMMIT
             
             # Retrieve upstream commit message
-            COMMIT_MSG=$(git log -1 --pretty=format:"%B" $COMMIT)
+            RAW_MSG=$(git log -1 --pretty=format:"%B" $COMMIT)
+            
+            # Format cross-repo links
+            COMMIT_MSG=$(echo "$RAW_MSG" | sed -E '\''s/#([0-9]+)/ReSukiSU\/ReSukiSU#\1/g'\'')
             
             cd ..
             git add KernelSU
