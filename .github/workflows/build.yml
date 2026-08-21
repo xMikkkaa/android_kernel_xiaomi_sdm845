@@ -7,11 +7,29 @@ on:
     branches: [ "resukisu" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Wait for older builds to finish
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Checking for older running jobs to ensure chronological releases..."
+        while true; do
+          OLDER_RUNS=$(gh run list --repo ${{ github.repository }} --workflow build.yml --branch ${{ github.ref_name }} --json databaseId,status --jq "[.[] | select(.databaseId < ${{ github.run_id }} and (.status == \"in_progress\" or .status == \"queued\" or .status == \"pending\" or .status == \"requested\" or .status == \"waiting\"))] | length")
+          if [ -z "$OLDER_RUNS" ] || [ "$OLDER_RUNS" -eq 0 ]; then
+            echo "No older runs pending. Proceeding!"
+            break
+          fi
+          echo "Waiting for $OLDER_RUNS older run(s) to finish..."
+          sleep 60
+        done
     - name: Checkout Kernel Source
       uses: actions/checkout@v7
       with:
