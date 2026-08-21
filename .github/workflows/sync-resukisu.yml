@@ -46,7 +46,7 @@ jobs:
             AUTHOR_EMAIL=$(git log -1 --pretty=format:"%ae" $COMMIT)
             
             # Format cross-repo links
-            COMMIT_MSG=$(echo "$RAW_MSG" | sed -E '\''s/#([0-9]+)/ReSukiSU\/ReSukiSU#\1/g'\'')
+            COMMIT_MSG=$(echo "$RAW_MSG" | sed -E 's/#([0-9]+)/ReSukiSU\/ReSukiSU#\1/g')
             
             cd ..
             git add KernelSU
