@@ -2,9 +2,9 @@ name: Build Kernel
 
 on:
   push:
-    branches: [ "resukisu" ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ "resukisu" ]
+    branches: [ "master" ]
   workflow_dispatch:
 
 permissions:

@@ -12,7 +12,7 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v7
       with:
-        ref: resukisu
+        ref: master
         submodules: recursive
         fetch-depth: 0
         token: ${{ secrets.PAT_TOKEN }}
@@ -56,7 +56,7 @@ jobs:
             $COMMIT_MSG"
             
             # Push incrementally to trigger independent CI builds
-            git push origin resukisu
+            git push origin master
             
             # Delay to ensure GitHub Actions processes the push event
             sleep 5
