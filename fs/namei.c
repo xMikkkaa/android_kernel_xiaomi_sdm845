@@ -2520,7 +2520,7 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 	return err;
 }
 
-static int filename_lookup(int dfd, struct filename *name, unsigned flags,
+int filename_lookup(int dfd, struct filename *name, unsigned flags,
 			   struct path *path, struct path *root)
 {
 	int retval;
@@ -2544,6 +2544,7 @@ static int filename_lookup(int dfd, struct filename *name, unsigned flags,
 	putname(name);
 	return retval;
 }
+EXPORT_SYMBOL(filename_lookup);
 
 /* Returns 0 and nd will be valid on success; Retuns error, otherwise. */
 static int path_parentat(struct nameidata *nd, unsigned flags,
