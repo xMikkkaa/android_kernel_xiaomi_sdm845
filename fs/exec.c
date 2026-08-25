@@ -1725,7 +1725,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 		return PTR_ERR(filename);
 
 #ifdef CONFIG_KSU_SUSFS
-	if (likely(susfs_is_current_proc_umounted()))
+	if (likely(susfs_is_current_proc_no_su()))
 		goto orig_flow;
 
 	susfs_ksu_handle_execveat_helper(&fd, &filename, &argv, &envp, &flags);
