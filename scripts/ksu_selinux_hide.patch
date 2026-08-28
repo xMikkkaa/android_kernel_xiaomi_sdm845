@@ -1,5 +1,5 @@
 diff --git a/kernel/feature/adb_root.c b/kernel/feature/adb_root.c
-index 1fd8dc66..551aff54 100644
+index b795a601..813e15b6 100644
 --- a/kernel/feature/adb_root.c
 +++ b/kernel/feature/adb_root.c
 @@ -29,6 +29,22 @@ bool ksu_adb_root __read_mostly = false;
@@ -26,7 +26,7 @@ index 1fd8dc66..551aff54 100644
  {
      size_t len = strlen(filename);
 diff --git a/kernel/feature/adb_root.h b/kernel/feature/adb_root.h
-index 5acf5fcb..b05dcbe3 100644
+index 379189a2..9dba6023 100644
 --- a/kernel/feature/adb_root.h
 +++ b/kernel/feature/adb_root.h
 @@ -1,6 +1,7 @@
@@ -37,7 +37,7 @@ index 5acf5fcb..b05dcbe3 100644
  #include "runtime/ksud.h"
  
  #ifdef CONFIG_KSU_TRACEPOINT_HOOK
-@@ -9,6 +10,15 @@ long ksu_adb_root_handle_execve_tracepoint(struct pt_regs *regs);
+@@ -10,6 +11,15 @@ long ksu_adb_root_handle_execveat_tracepoint(struct pt_regs *regs);
  long ksu_adb_root_handle_execve_manual(const char *filename, struct user_arg_ptr *envp_p);
  #endif
  
@@ -54,7 +54,7 @@ index 5acf5fcb..b05dcbe3 100644
  
  void ksu_adb_root_exit(void);
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index f92f8a4c..ee0c9153 100644
+index 358dfcdf..c3a29980 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -38,6 +38,7 @@
@@ -125,17 +125,17 @@ index f92f8a4c..ee0c9153 100644
  #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
      length = security_context_to_sid_with_policy(backup_sepolicy, scon, strlen(scon), &ssid, SECSID_NULL, GFP_KERNEL);
      if (length)
-@@ -275,6 +315,9 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
-     ksu_security_compute_av_user(ssid, tsid, tclass, &avd);
- #endif
+@@ -277,6 +317,9 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
  
+     // stock reads 1; a loader load_policy may have bumped the backup before we load
+     avd.seqno = 1;
++
 +    /* apply configured spoof rules (fsck_untrusted, adbd->adbroot, shell->su transition) */
 +    ksu_apply_selinux_hide_spoof(&avd, scon, tcon, tclass);
-+
      length = scnprintf(buf, SIMPLE_TRANSACTION_LIMIT, "%x %x %x %x %u %x", avd.allowed, 0xffffffff, avd.auditallow,
                         avd.auditdeny, avd.seqno, avd.flags);
  out:
-@@ -312,6 +355,11 @@ int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, vo
+@@ -314,6 +357,11 @@ int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, vo
      if (strcmp(name, "current")) {
          goto call_orig;
      }
@@ -147,7 +147,7 @@ index f92f8a4c..ee0c9153 100644
      mysid = current_sid();
  
  #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-@@ -1717,17 +1765,6 @@ static void type_attribute_bounds_av(struct context *scontext, struct context *t
+@@ -1728,17 +1776,6 @@ static void type_attribute_bounds_av(struct context *scontext, struct context *t
      struct type_datum *target;
      u32 masked = 0;
  
@@ -165,7 +165,7 @@ index f92f8a4c..ee0c9153 100644
      source = flex_array_get_ptr(backup_policydb->type_val_to_struct_array, scontext->type - 1);
      BUG_ON(!source);
  
-@@ -1737,8 +1774,6 @@ static void type_attribute_bounds_av(struct context *scontext, struct context *t
+@@ -1748,8 +1785,6 @@ static void type_attribute_bounds_av(struct context *scontext, struct context *t
      target = flex_array_get_ptr(backup_policydb->type_val_to_struct_array, tcontext->type - 1);
      BUG_ON(!target);
  
@@ -174,7 +174,7 @@ index f92f8a4c..ee0c9153 100644
      memset(&lo_avd, 0, sizeof(lo_avd));
  
      memcpy(&lo_scontext, scontext, sizeof(lo_scontext));
-@@ -1780,7 +1815,6 @@ static void avd_init(struct av_decision *avd)
+@@ -1791,7 +1826,6 @@ static void avd_init(struct av_decision *avd)
      avd->flags = 0;
  }
  
@@ -182,7 +182,7 @@ index f92f8a4c..ee0c9153 100644
  /*
   * get the subjective security ID of the current task
   */
-@@ -1790,7 +1824,6 @@ static inline u32 current_sid(void)
+@@ -1801,7 +1835,6 @@ static inline u32 current_sid(void)
  
      return tsec->sid;
  }
@@ -190,7 +190,7 @@ index f92f8a4c..ee0c9153 100644
  
  /*
   * Compute access vectors and extended permissions based on a context
-@@ -1830,21 +1863,10 @@ static void context_struct_compute_av(struct context *scontext, struct context *
+@@ -1841,21 +1874,10 @@ static void context_struct_compute_av(struct context *scontext, struct context *
  	 */
      avkey.target_class = tclass;
      avkey.specified = AVTAB_AV | AVTAB_XPERMS;
@@ -212,3 +212,6 @@ index f92f8a4c..ee0c9153 100644
      ebitmap_for_each_positive_bit(sattr, snode, i)
      {
          ebitmap_for_each_positive_bit(tattr, tnode, j)
+-- 
+2.55.0
+
