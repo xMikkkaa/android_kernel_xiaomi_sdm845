@@ -1,8 +1,6 @@
 name: Sync ReSukiSU
 
 on:
-  schedule:
-    - cron: '17 */2 * * *' # Runs every 2 hours at minute 17
   workflow_dispatch:
 
 jobs:
