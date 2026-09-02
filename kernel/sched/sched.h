@@ -468,6 +468,8 @@ struct cfs_rq {
 
 	u64 exec_clock;
 	u64 min_vruntime;
+	s64 avg_vruntime;
+	u64 avg_load;
 #ifndef CONFIG_64BIT
 	u64 min_vruntime_copy;
 #endif

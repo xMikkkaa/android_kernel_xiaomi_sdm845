@@ -1,15 +1,13 @@
 /*
- * Only give sleepers 50% of their service deficit. This allows
- * them to run sooner, but does not allow tons of sleepers to
- * rip the spread apart.
+ * EEVDF features
  */
-SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)
-
-/*
- * Place new tasks ahead so that they do not starve already running
- * tasks
- */
-SCHED_FEAT(START_DEBIT, true)
+SCHED_FEAT(PLACE_LAG, true)
+SCHED_FEAT(PLACE_DEADLINE_INITIAL, true)
+SCHED_FEAT(RUN_TO_PARITY, true)
+SCHED_FEAT(PREEMPT_SHORT, true)
+SCHED_FEAT(PLACE_SLEEPER, false)
+SCHED_FEAT(GENTLE_SLEEPER, true)
+SCHED_FEAT(EVDF, false)
 
 /*
  * Prefer to schedule the task we woke last (assuming it failed
@@ -17,13 +15,6 @@ SCHED_FEAT(START_DEBIT, true)
  * touched, increases cache locality.
  */
 SCHED_FEAT(NEXT_BUDDY, true)
-
-/*
- * Prefer to schedule the task that ran last (when we did
- * wake-preempt) as that likely will touch the same data, increases
- * cache locality.
- */
-SCHED_FEAT(LAST_BUDDY, true)
 
 /*
  * skip buddy i.e task called yield() is always skipped and the
