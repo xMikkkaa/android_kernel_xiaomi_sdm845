@@ -132,6 +132,13 @@ void update_curr_bore(struct task_struct *p, u64 delta_exec) {
 	update_penalty(p);
 }
 
+static inline u64 rescale_slice(u64 delta, u8 old_prio, u8 new_prio) {
+	u64 unscaled, rescaled;
+	unscaled = mul_u64_u32_shr(delta   , sched_prio_to_weight[old_prio], 10);
+	rescaled = mul_u64_u32_shr(unscaled, sched_prio_to_wmult [new_prio], 22);
+	return rescaled;
+}
+
 void restart_burst_bore(struct task_struct *p) {
 	struct bore_ctx *ctx = &p->bore;
 	u32 new_penalty = binary_smooth(ctx->curr_penalty, ctx->prev_penalty);
@@ -139,6 +146,22 @@ void restart_burst_bore(struct task_struct *p) {
 	ctx->curr_penalty = 0;
 	ctx->burst_time = 0;
 	update_penalty(p);
+}
+
+void restart_burst_rescale_deadline_bore(struct task_struct *p) {
+	struct sched_entity *se = &p->se;
+	s64 vscaled, vremain = se->deadline - se->vruntime;
+
+	u8 old_prio = effective_prio_bore(p);
+	restart_burst_bore(p);
+	u8 new_prio = effective_prio_bore(p);
+
+	if (old_prio > new_prio) {
+		vscaled = rescale_slice(abs(vremain), old_prio, new_prio);
+		if (unlikely(vremain < 0))
+			vscaled = -vscaled;
+		se->deadline = se->vruntime + vscaled;
+	}
 }
 
 static inline bool task_is_bore_eligible(struct task_struct *p) {

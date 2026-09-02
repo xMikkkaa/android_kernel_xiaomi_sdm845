@@ -602,6 +602,10 @@ void update_entity_lag(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	lag = avg_vruntime(cfs_rq) - se->vruntime;
 
 	limit = calc_delta_fair(max_t(u64, 2*se->slice, TICK_NSEC), se);
+#ifdef CONFIG_SCHED_BORE
+	if (static_branch_likely(&sched_bore_key))
+		limit >>= 1;
+#endif /* CONFIG_SCHED_BORE */
 	se->vlag = clamp(lag, -limit, limit);
 }
 
@@ -737,8 +741,14 @@ static struct sched_entity *__pick_eevdf(struct cfs_rq *cfs_rq)
 		curr = NULL;
 	best = curr;
 
-	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline)
+	if (sched_feat(RUN_TO_PARITY) && curr && curr->vlag == curr->deadline) {
+#ifdef CONFIG_SCHED_BORE
+		if (!static_branch_likely(&sched_bore_key) ||
+			!entity_is_task(curr) ||
+			!task_of(curr)->bore.futex_waiting)
+#endif /* CONFIG_SCHED_BORE */
 		return curr;
+	}
 
 	while (node) {
 		struct sched_entity *se = __node_2_se(node);
@@ -3730,7 +3740,6 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 
 	if (!se->custom_slice)
 		se->slice = sysctl_sched_base_slice;
-	vslice = calc_delta_fair(se->slice, se);
 
 	if (sched_feat(PLACE_LAG) && cfs_rq->nr_running) {
 		struct sched_entity *curr = cfs_rq->curr;
@@ -3756,9 +3765,24 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 
 	se->vruntime = vruntime - lag;
 
+#ifdef CONFIG_SCHED_BORE
+	if (static_branch_likely(&sched_bore_key) &&
+			entity_is_task(se) &&
+			task_of(se)->bore.futex_waiting)
+		goto vslice_found;
+#endif /* !CONFIG_SCHED_BORE */
+	vslice = calc_delta_fair(se->slice, se);
+#ifdef CONFIG_SCHED_BORE
+	if (static_branch_likely(&sched_bore_key))
+		vslice >>= !!initial;
+	else
+#endif /* CONFIG_SCHED_BORE */
 	if (sched_feat(PLACE_DEADLINE_INITIAL) && initial)
 		vslice /= 2;
 
+#ifdef CONFIG_SCHED_BORE
+vslice_found:
+#endif /* CONFIG_SCHED_BORE */
 	se->deadline = se->vruntime + vslice;
 }
 
@@ -8238,7 +8262,7 @@ static void yield_task_fair(struct rq *rq)
 	update_curr(cfs_rq);
 
 #ifdef CONFIG_SCHED_BORE
-	restart_burst_bore(curr);
+	restart_burst_rescale_deadline_bore(curr);
 	if (unlikely(rq->nr_running == 1))
 		return;
 

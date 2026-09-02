@@ -21,6 +21,7 @@ extern uint __read_mostly sched_burst_cache_lifetime;
 extern u8   effective_prio_bore(struct task_struct *p);
 extern void update_curr_bore(struct task_struct *p, u64 delta_exec);
 extern void restart_burst_bore(struct task_struct *p);
+extern void restart_burst_rescale_deadline_bore(struct task_struct *p);
 extern void task_fork_bore(struct task_struct *p, struct task_struct *parent,
 													u64 clone_flags, u64 now);
 extern void sched_init_bore(void);
