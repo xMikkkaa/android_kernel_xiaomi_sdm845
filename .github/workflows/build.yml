@@ -146,7 +146,7 @@ jobs:
         
         # Prepare HTML formatted caption
         CAPTION="<b>${KERNEL_NAME}</b>
-        ReSukiSU Version: ${KSU_VERSION}
+        <a href=\"https://t.me/ReSukiSU\">ReSukiSU Version: ${KSU_VERSION}</a>
         Branch: ${BRANCH}
         <a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#ci_${COMMIT}</a>
         Duration: ${{ env.DURATION }}
