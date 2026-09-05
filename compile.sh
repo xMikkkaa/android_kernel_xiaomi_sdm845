@@ -294,6 +294,7 @@ package_zip() {
     local ZIP_NAME="${KERNEL_NAME}.zip"
 
     mkdir -p "${ZIP_DIR}"
+    printf '%s\n' "${BASE_KERNEL_NAME}" > "${OUT_DIR}/kernel_name"
 
     cd "${STAGING_DIR}"
     zip -r9 "${ZIP_DIR}/${ZIP_NAME}" . \
@@ -552,6 +553,8 @@ main() {
                 ;;
         esac
     done
+
+    BASE_KERNEL_NAME="${KERNEL_NAME}"
 
     if [ "${VARIANT}" = "nse" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
         KERNEL_NAME="${KERNEL_NAME}-NSE-Disable-Audio-OC${OC_VAL}"
