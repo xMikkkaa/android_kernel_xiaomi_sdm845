@@ -52,7 +52,7 @@ JOBS="$(nproc --all)"
 
 # Kernel name from defconfig LOCALVERSION
 OC_VAL="805"
-KERNEL_NAME="Chimera-CI"
+KERNEL_NAME="Chimera-V5-Rc1"
 
 # Build variant (default or nse)
 VARIANT="default"
