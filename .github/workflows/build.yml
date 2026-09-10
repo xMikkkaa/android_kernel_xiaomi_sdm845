@@ -117,12 +117,15 @@ jobs:
         path: out/zip/*.zip
 
     - name: Telegram Notification & Commit Log
+      continue-on-error: true
       env:
         TG_TOKEN: ${{ secrets.TG_TOKEN }}
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         TG_DUMP_CHAT_ID: ${{ secrets.TG_DUMP_CHAT_ID }}
         TG_DUMP_THREAD_ID: ${{ secrets.TG_DUMP_THREAD_ID }}
       run: |
+        ls -lh out/zip/
+        find out/zip -type f -size 0 -print || true
         BRANCH=${GITHUB_REF_NAME}
         COMMIT=$(git rev-parse --short HEAD)
         
@@ -171,29 +174,82 @@ jobs:
         dump_thread_id = os.environ.get("TG_DUMP_THREAD_ID")
         commit_text = os.environ.get("CAPTION", "")
 
-        def api_post(method, payload, files=None, retries=3):
+        def api_post(method, payload, files=None, retries=5):
             last_error = None
             for attempt in range(retries):
                 try:
+                    # Rewind file objects so retries never send an empty body
+                    if files:
+                        for v in files.values():
+                            fobj = v[1] if isinstance(v, tuple) else v
+                            try:
+                                fobj.seek(0)
+                            except Exception:
+                                pass
                     r = requests.post(
                         f"https://api.telegram.org/bot{bot_token}/{method}",
                         data=payload,
                         files=files,
-                        timeout=(20, 120),
+                        timeout=(20, 180),
                     )
                     body = r.json()
                     if body.get("ok"):
                         return body["result"]
                     last_error = body
                     print(f"[{method}] attempt {attempt + 1}/{retries}: {body}")
+                    if body.get("error_code") == 429:
+                        retry_after = body.get("parameters", {}).get("retry_after", 2 ** attempt)
+                        print(f"[{method}] flood control, sleeping {retry_after}s...")
+                        time.sleep(int(retry_after) + 1)
+                        continue
                     if body.get("error_code") in (400, 403, 404):
                         raise SystemExit(f"Telegram API rejected {method}: {body}")
-                    time.sleep(2 ** attempt)
+                    time.sleep(2 ** attempt + 2)
                 except Exception as exc:  # pragma: no cover - best-effort fallback
                     last_error = exc
                     print(f"[{method}] transport error: {exc}")
-                    time.sleep(2 ** attempt)
+                    time.sleep(2 ** attempt + 2)
             raise SystemExit(f"{method} failed after {retries} attempts: {last_error}")
+
+        def send_document(path, payload, retries=5):
+            # Open fresh file handle per attempt so a timed-out upload
+            # never retries with an EOF pointer (which Telegram rejects
+            # as 400 file must be non-empty).
+            last_error = None
+            for attempt in range(retries):
+                try:
+                    with open(path, "rb") as fh:
+                        r = requests.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendDocument",
+                            data=payload,
+                            files={"document": (os.path.basename(path), fh)},
+                            timeout=(20, 180),
+                        )
+                        body = r.json()
+                        if body.get("ok"):
+                            return body["result"]
+                        last_error = body
+                        print(f"[sendDocument] attempt {attempt + 1}/{retries}: {body}")
+                        if body.get("error_code") == 429:
+                            retry_after = body.get("parameters", {}).get("retry_after", 2 ** attempt)
+                            print(f"[sendDocument] flood control, sleeping {retry_after}s...")
+                            time.sleep(int(retry_after) + 1)
+                            continue
+                        if body.get("error_code") in (400, 403, 404):
+                            # 400 file must be non-empty on a non-empty local file
+                            # means a truncated/empty retry body, retry once with fresh handle
+                            # except when Telegram insists the file itself is rejected.
+                            if body.get("description") == "Bad Request: file must be non-empty":
+                                print(f"[sendDocument] empty-body retry, reopening {path}...")
+                                time.sleep(3)
+                                continue
+                            raise SystemExit(f"Telegram API rejected sendDocument: {body}")
+                        time.sleep(2 ** attempt + 2)
+                except Exception as exc:
+                    last_error = exc
+                    print(f"[sendDocument] transport error: {exc}")
+                    time.sleep(2 ** attempt + 2)
+            raise SystemExit(f"sendDocument failed after {retries} attempts: {last_error}")
 
         files = sorted(glob.glob("out/zip/*.zip"))
         if not files:
@@ -201,23 +257,36 @@ jobs:
             sys.exit(0)
 
         file_ids = []
+        failed_files = []
         for i, path in enumerate(files, 1):
-            print(f"Uploading {path} to Dump Chat ({i}/{len(files)})...")
+            size = os.path.getsize(path) if os.path.exists(path) else 0
+            print(f"Uploading {path} ({size} bytes) to Dump Chat ({i}/{len(files)})...")
+            if size == 0:
+                print(f"Skipping {path}: file is empty, not failing build.")
+                failed_files.append(path)
+                continue
             payload = {"chat_id": dump_chat_id, "disable_notification": True}
             if dump_thread_id:
                 payload["message_thread_id"] = dump_thread_id
             try:
-                with open(path, "rb") as fh:
-                    result = api_post("sendDocument", payload, files={"document": fh})
+                result = send_document(path, payload)
                 file_ids.append(result["document"]["file_id"])
-            except SystemExit:
-                raise
+            except SystemExit as exc:
+                print(f"Skipping {path} due to Telegram rejection, continuing: {exc}")
+                failed_files.append(path)
+                time.sleep(5)
+                continue
             except Exception as exc:
                 print(f"Failed to upload {path}: {exc}")
+                failed_files.append(path)
+            time.sleep(3)
+
+        if failed_files:
+            print(f"Warning: {len(failed_files)} file(s) skipped: {failed_files}")
 
         if not file_ids:
-            print("Failed to upload any files to dump chat.")
-            sys.exit(1)
+            print("Failed to upload any files to dump chat, but artifacts are safe on GitHub. Not failing build.")
+            sys.exit(0)
 
         chunks = [file_ids[i:i + 10] for i in range(0, len(file_ids), 10)]
         first_message_id = None
