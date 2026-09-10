@@ -45,11 +45,24 @@ jobs:
             
             # Format cross-repo links
             COMMIT_MSG=$(echo "$RAW_MSG" | sed -E 's/#([0-9]+)/ReSukiSU\/ReSukiSU#\1/g')
+
+            # Detect whether upstream commit would trigger manager build
+            # Mirror of KernelSU/.github/workflows/build-manager.yml push.paths filter
+            CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r --root -m $COMMIT || true)
+            echo "Changed files in $COMMIT:"
+            echo "$CHANGED_FILES"
+            if echo "$CHANGED_FILES" | grep -Eq '^manager/|^kernel/|^userspace/|^scripts/ksubot\.py$|^\.github/workflows/(build-manager|build-lkm|ddk-lkm|ksud)\.yml$'; then
+              SKIP_TAG=""
+              echo "Manager-triggering change detected, CI will run."
+            else
+              SKIP_TAG=" [skip ci]"
+              echo "No manager-triggering change, will add [skip ci]."
+            fi
             
             cd ..
             git add KernelSU
             
-            git commit --author="$AUTHOR_NAME <$AUTHOR_EMAIL>" -m "sync(kernelsu): update submodule to ${COMMIT:0:7}
+            git commit --author="$AUTHOR_NAME <$AUTHOR_EMAIL>" -m "sync(kernelsu): update submodule to ${COMMIT:0:7}${SKIP_TAG}
             
             $COMMIT_MSG"
             
