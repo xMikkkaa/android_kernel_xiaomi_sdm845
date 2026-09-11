@@ -390,20 +390,23 @@ show_help() {
 # ─────────────────────────────────────────────────────────────────────────────
 apply_gpu_oc() {
     log_step "Applying GPU Overclock: ${OC_VAL} MHz"
-    
-    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
-    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
-    
-    log_success "GPU frequency set to ${OC_VAL} MHz in DT and Clock Driver"
+
+    local OC_PATCH="${KERNEL_DIR}/patches/gpu-oc/oc-${OC_VAL}.patch"
+    if [ ! -f "${OC_PATCH}" ]; then
+        log_error "OC patch not found: ${OC_PATCH}"
+        exit 1
+    fi
+    patch -p1 -d "${KERNEL_DIR}" < "${OC_PATCH}"
+
+    log_success "Stepped GPU table ${OC_VAL} MHz applied"
 }
 
 restore_gpu_oc() {
-    if [ "${OC_VAL}" != "805" ]; then
-        log_step "Restoring original GPU frequency configuration..."
-        sed -i -E "s/${OC_VAL}000000/805000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
-        sed -i -E "s/${OC_VAL}000000/805000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
-        log_success "Original files restored"
-    fi
+    log_step "Restoring stock GPU tables..."
+    git -C "${KERNEL_DIR}" checkout -- \
+        arch/arm64/boot/dts/qcom/sdm845-v2.dtsi \
+        drivers/clk/qcom/gpucc-sdm845.c
+    log_success "Stock GPU tables restored"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,7 +578,7 @@ main() {
         exit 0
     fi
 
-    trap 'restore_gpu_oc; restore_fstab_variant; restore_audio_configs' EXIT
+    trap 'restore_fstab_variant; restore_gpu_oc; restore_audio_configs' EXIT
 
     apply_gpu_oc
     apply_fstab_variant
