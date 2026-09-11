@@ -133,10 +133,13 @@ jobs:
         if git diff-tree --no-commit-id --name-only -r HEAD | grep -q "KernelSU"; then
             # KernelSU was updated
             RAW_MSG=$(cd KernelSU && git log -1 --pretty=format:"%B")
-            COMMIT_MSG="[ReSukiSU Update] ${RAW_MSG}"
+            AUTHOR_NAME=$(cd KernelSU && git log -1 --pretty=format:"%an")
+            COMMIT_MSG="[ReSukiSU Update] ${RAW_MSG} by ${AUTHOR_NAME}"
         else
             # Chimera was updated
-            COMMIT_MSG="$(git log -1 --pretty=format:"%B")"
+            RAW_MSG="$(git log -1 --pretty=format:"%B")"
+            AUTHOR_NAME="$(git log -1 --pretty=format:"%an")"
+            COMMIT_MSG="${RAW_MSG} by ${AUTHOR_NAME}"
         fi
 
         # Keep the full message unless it exceeds Telegram's safe message budget.
