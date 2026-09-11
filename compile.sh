@@ -419,85 +419,33 @@ apply_fstab_variant() {
     fi
 
     log_step "Applying fstab configuration..."
-    cp "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak"
-    
+
+    local FSTAB_PATCH
     if [ "${VARIANT}" = "nse" ]; then
         log_info "Applying NSE (Non-System_Ext) fstab..."
-        cat << 'EOF' >> "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-
-/* NSE Fstab appended by compile.sh */
-&firmware {
-	android {
-		fstab {
-			compatible = "android,fstab";
-			system {
-				compatible = "android,system";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/system";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			vendor {
-				compatible = "android,vendor";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-		};
-	};
-};
-EOF
-        log_success "NSE fstab applied to sdm845-xiaomi-common.dtsi"
+        FSTAB_PATCH="${KERNEL_DIR}/patches/fstab/fstab-nse.patch"
     else
         log_info "Applying Default (System_Ext) fstab..."
-        cat << 'EOF' >> "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-
-/* Default Fstab appended by compile.sh */
-&firmware {
-	android {
-		fstab {
-			compatible = "android,fstab";
-			system {
-				compatible = "android,system";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/system";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			system_ext {
-				compatible = "android,system_ext";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/cust";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			vendor {
-				compatible = "android,vendor";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-		};
-	};
-};
-EOF
-        log_success "Default fstab applied to sdm845-xiaomi-common.dtsi"
+        FSTAB_PATCH="${KERNEL_DIR}/patches/fstab/fstab-default.patch"
     fi
+
+    if [ ! -f "${FSTAB_PATCH}" ]; then
+        log_error "Fstab patch not found: ${FSTAB_PATCH}"
+        exit 1
+    fi
+    patch -p1 -d "${KERNEL_DIR}" < "${FSTAB_PATCH}"
+
+    log_success "Fstab ${VARIANT} variant applied via patch"
 }
 
 restore_fstab_variant() {
-    if [ -f "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak" ]; then
-        log_step "Restoring original fstab configuration..."
-        mv "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-        log_success "Original sdm845-xiaomi-common.dtsi restored"
+    if [ "${VARIANT}" = "dynamic" ]; then
+        return
     fi
+    log_step "Restoring original fstab configuration..."
+    git -C "${KERNEL_DIR}" checkout -- \
+        arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi
+    log_success "Original sdm845-xiaomi-common.dtsi restored"
 }
 
 restore_audio_configs() {
