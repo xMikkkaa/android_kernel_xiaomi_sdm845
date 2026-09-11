@@ -1694,7 +1694,8 @@ extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *ar
 			void *envp, int *flags);
 extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
 				void *envp, int *flags);
-extern int ksu_install_su_fd(void);
+extern int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv,
+				void *envp, int *flags, int *retval);
 
 static noinline int susfs_ksu_handle_execveat_helper(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags)
 {
@@ -1853,7 +1854,7 @@ orig_flow:
 	retval = exec_binprm(bprm);
 #ifdef CONFIG_KSU_SUSFS
 	if (unlikely(is_su_session && retval >= 0))
-		ksu_install_su_fd();
+		(void)ksu_handle_post_execveat_sucompat(&fd, &filename, &argv, &envp, &flags, &retval);
 #endif // #ifdef CONFIG_KSU_SUSFS
 	if (retval < 0)
 		goto out;

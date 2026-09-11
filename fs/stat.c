@@ -75,7 +75,8 @@ void generic_fillattr(struct inode *inode, struct kstat *stat)
 	stat->blksize = i_blocksize(inode);
 	stat->blocks = inode->i_blocks;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
+	if (susfs_is_current_app_uid())
+		susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
 #endif
 }
 
@@ -101,7 +102,7 @@ int vfs_getattr_nosec(struct path *path, struct kstat *stat)
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 	{
 		int err = inode->i_op->getattr(path->mnt, path->dentry, stat);
-		if (!err)
+		if (!err && susfs_is_current_app_uid())
 			susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
 		return err;
 	}
