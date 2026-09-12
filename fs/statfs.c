@@ -80,10 +80,10 @@ static int susfs_statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf, bo
 	retval = security_sb_statfs(dentry);
 	if (retval)
 		return retval;
-	if (susfs_sus_kstat_spoof_vfs_statfs(d_backing_inode(dentry), buf, is_fuse))
-		goto orig_flow;
+	if (!susfs_sus_kstat_spoof_vfs_statfs(d_backing_inode(dentry), buf, is_fuse))
+		goto bypass_orig_flow;
 	retval = dentry->d_sb->s_op->statfs(dentry, buf);
-orig_flow:
+bypass_orig_flow:
 	if (retval == 0 && buf->f_frsize == 0)
 		buf->f_frsize = buf->f_bsize;
 	return retval;
