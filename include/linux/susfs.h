@@ -83,7 +83,7 @@ struct st_susfs_mount_source_spoof_list {
 #define KSTAT_SPOOF_ATIME_TV_NSEC (1 << 5)
 #define KSTAT_SPOOF_MTIME_TV_SEC (1 << 6)
 #define KSTAT_SPOOF_MTIME_TV_NSEC (1 << 7)
-#define KSTAT_SPOOF_CTIME_TV_SEC (1 < 8)
+#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)
 #define KSTAT_SPOOF_CTIME_TV_NSEC (1 << 9)
 #define KSTAT_SPOOF_BLOCKS (1 << 10)
 #define KSTAT_SPOOF_BLKSIZE (1 << 11)
@@ -213,6 +213,7 @@ void susfs_add_mount_source_spoof(void __user **user_info);
 void susfs_del_mount_source_spoof(void __user **user_info);
 bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
 					char *out_buf, size_t out_buf_size);
+bool susfs_should_check_mount_spoof(const char *devname);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
 void susfs_auto_mount_source_spoof_init(void);

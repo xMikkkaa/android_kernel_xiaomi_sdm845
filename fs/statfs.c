@@ -112,7 +112,8 @@ int vfs_statfs(struct path *path, struct kstatfs *buf)
 #endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	if (susfs_is_current_app_uid()) {
+	if (SUSFS_IS_INODE_SUS_KSTAT_FAST(d_backing_inode(path->dentry)) &&
+		susfs_is_current_app_uid()) {
 		struct inode *kstat_inode = d_backing_inode(path->dentry);
 		bool is_fuse = false;
 		if (susfs_is_inode_sus_kstat(kstat_inode, &is_fuse)) {

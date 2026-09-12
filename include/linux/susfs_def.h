@@ -154,6 +154,14 @@ static inline void susfs_clear_current_proc_no_su(void) {
 		unlikely(test_bit(AS_FLAGS_SUS_MAP, &inode->i_mapping->flags)) && \
 		susfs_is_current_proc_umounted_app()
 
+/* Cheap pre-filter for sus_kstat: exact gate, no false negatives.
+ * get_fuse_inode() is pure container_of, so fi->inode.i_mapping IS
+ * inode->i_mapping — testing this bit covers the FUSE branch of
+ * susfs_is_inode_sus_kstat() too. The full check still runs after. */
+#define SUSFS_IS_INODE_SUS_KSTAT_FAST(inode) \
+		inode && inode->i_mapping && \
+		unlikely(test_bit(AS_FLAGS_SUS_KSTAT, &inode->i_mapping->flags))
+
 #define SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode) \
 		inode && inode->i_mapping && \
 		unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags))

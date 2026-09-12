@@ -116,7 +116,8 @@ static int susfs_show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 	/* Mount source spoofing: replace raw block dev path with dm-verity path
 	 * for umounted (non-root) app processes to bypass direct block mount detection.
 	 */
-	if (susfs_is_current_proc_umounted_app()) {
+	if (susfs_is_current_proc_umounted_app() &&
+		susfs_should_check_mount_spoof(r->mnt_devname)) {
 		char pathbuf[256];
 		char *mnt_target;
 		char spoofed_buf[SUSFS_MAX_LEN_PATHNAME];
@@ -265,7 +266,8 @@ static int susfs_show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 	 * Replace raw block device source with dm-verity path for umounted apps.
 	 */
 	if (susfs_is_current_proc_umounted_app() &&
-		!sb->s_op->show_devname) {
+		!sb->s_op->show_devname &&
+		susfs_should_check_mount_spoof(r->mnt_devname)) {
 		char pathbuf[256];
 		char *mnt_target;
 		char spoofed_buf[SUSFS_MAX_LEN_PATHNAME];

@@ -73,7 +73,8 @@ static int seq_show(struct seq_file *m, void *v)
 		return ret;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	if (susfs_is_current_app_uid()) {
+	if (SUSFS_IS_INODE_SUS_KSTAT_FAST(file_inode(file)) &&
+		susfs_is_current_app_uid()) {
 		struct inode *inode = file_inode(file);
 		bool is_fuse = false;
 		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {

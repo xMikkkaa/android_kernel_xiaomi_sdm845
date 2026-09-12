@@ -153,8 +153,8 @@ static void susfs_run_sus_path_loop(void) {
 				continue;
 			}
 			if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
-				fi = get_fuse_inode(inode);
-				if (!fi || !fi->inode.i_mapping) {
+		fi = get_fuse_inode(inode);
+		if (unlikely(!fi || !fi->inode.i_mapping)) {
 					SUSFS_LOGE("fi || fi->inode.i_mapping is NULL\n");
 					path_put(&path);
 					continue;
@@ -286,12 +286,17 @@ static LIST_HEAD(LH_MOUNT_SOURCE_SPOOF);
 
 void susfs_add_mount_source_spoof(void __user **user_info) {
 	struct st_susfs_mount_source_spoof info = {0};
-	struct st_susfs_mount_source_spoof_list *entry;
+	struct st_susfs_mount_source_spoof_list *entry, *new_entry;
 
 	if (copy_from_user(&info, (struct st_susfs_mount_source_spoof __user*)*user_info, sizeof(info))) {
 		info.err = -EFAULT;
 		goto out_copy_to_user;
 	}
+
+	/* Userspace strings may be unterminated: clamp them so the
+	 * strcmp() lookups below can never read out of bounds. */
+	info.target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+	info.spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 	if (info.target_mountpoint[0] == '\0' || info.spoofed_source[0] == '\0') {
 		SUSFS_LOGE("mount_source_spoof: target_mountpoint or spoofed_source is empty\n");
@@ -302,12 +307,23 @@ void susfs_add_mount_source_spoof(void __user **user_info) {
 	/* Check for duplicate entry and update if already present */
 	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
 	list_for_each_entry(entry, &LH_MOUNT_SOURCE_SPOOF, list) {
-		if (strncmp(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
-			strncpy(entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
-			entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
+		if (strcmp(entry->target_mountpoint, info.target_mountpoint) == 0) {
+			/* RCU-safe update: swap in a fresh entry so lockless
+			 * readers never observe a half-written string. */
+			new_entry = kzalloc(sizeof(*new_entry), GFP_KERNEL);
+			if (!new_entry) {
+				mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+				info.err = -ENOMEM;
+				goto out_copy_to_user;
+			}
+			strscpy(new_entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1);
+			strscpy(new_entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
+			list_replace_rcu(&entry->list, &new_entry->list);
 			mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+			synchronize_rcu();
+			kfree(entry);
 			SUSFS_LOGI("mount_source_spoof: updated '%s' -> '%s'\n",
-				entry->target_mountpoint, entry->spoofed_source);
+				info.target_mountpoint, info.spoofed_source);
 			info.err = 0;
 			goto out_copy_to_user;
 		}
@@ -320,11 +336,9 @@ void susfs_add_mount_source_spoof(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	strncpy(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1);
-	entry->target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
-	strncpy(entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
-	entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
-	list_add_tail(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
+	strscpy(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1);
+	strscpy(entry->spoofed_source, info.spoofed_source, SUSFS_MAX_LEN_PATHNAME - 1);
+	list_add_tail_rcu(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
 	mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
 
 	SUSFS_LOGI("mount_source_spoof: added '%s' -> '%s'\n",
@@ -350,13 +364,16 @@ void susfs_del_mount_source_spoof(void __user **user_info) {
 		info.err = -EINVAL;
 		goto out_copy_to_user;
 	}
+	info.target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
 	list_for_each_entry_safe(entry, tmp, &LH_MOUNT_SOURCE_SPOOF, list) {
-		if (strncmp(entry->target_mountpoint, info.target_mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
-			list_del(&entry->list);
-			kfree(entry);
+		if (strcmp(entry->target_mountpoint, info.target_mountpoint) == 0) {
+			list_del_rcu(&entry->list);
 			mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+			/* Wait out lockless readers before freeing. */
+			synchronize_rcu();
+			kfree(entry);
 			SUSFS_LOGI("mount_source_spoof: removed '%s'\n", info.target_mountpoint);
 			info.err = 0;
 			goto out_copy_to_user;
@@ -379,8 +396,19 @@ out_copy_to_user:
  *
  * Called from show_vfsmnt() and show_mountinfo() in proc_namespace.c.
  * Returns the spoofed source string if a mapping exists, NULL otherwise.
- * RCU-friendly: list is only modified under mutex, read without lock (safe for seq_file).
+ * Lockless RCU reader: writers add/replace/delete under
+ * susfs_mutex_lock_mount_source_spoof with RCU grace periods, so this
+ * takes no lock and never sleeps (safe for seq_file show paths).
  */
+bool susfs_should_check_mount_spoof(const char *devname)
+{
+	/* Mirror of the devname filter below: dm-verity/mapper sources can
+	 * never match a spoof rule, so callers can skip the dentry walk and
+	 * list lookup entirely for them. */
+	return !devname || (!strstr(devname, "/dev/mapper/") &&
+			    !strstr(devname, "/dev/block/dm-"));
+}
+
 bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
 				char *out_buf, size_t out_buf_size) {
 	struct st_susfs_mount_source_spoof_list *entry;
@@ -395,16 +423,15 @@ bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
 			return false;
 	}
 
-	mutex_lock(&susfs_mutex_lock_mount_source_spoof);
-	list_for_each_entry(entry, &LH_MOUNT_SOURCE_SPOOF, list) {
-		if (strncmp(entry->target_mountpoint, mountpoint, SUSFS_MAX_LEN_PATHNAME - 1) == 0) {
-			strncpy(out_buf, entry->spoofed_source, out_buf_size - 1);
-			out_buf[out_buf_size - 1] = '\0';
+	rcu_read_lock();
+	list_for_each_entry_rcu(entry, &LH_MOUNT_SOURCE_SPOOF, list) {
+		if (strcmp(entry->target_mountpoint, mountpoint) == 0) {
+			strscpy(out_buf, entry->spoofed_source, out_buf_size);
 			found = true;
 			break;
 		}
 	}
-	mutex_unlock(&susfs_mutex_lock_mount_source_spoof);
+	rcu_read_unlock();
 	return found;
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -452,18 +479,16 @@ void __init susfs_auto_mount_source_spoof_init(void) {
 			continue;
 		}
 
-		strncpy(entry->target_mountpoint,
+		strscpy(entry->target_mountpoint,
 			susfs_default_mount_spoof_rules[i].mountpoint,
 			SUSFS_MAX_LEN_PATHNAME - 1);
-		entry->target_mountpoint[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
-		strncpy(entry->spoofed_source,
+		strscpy(entry->spoofed_source,
 			susfs_default_mount_spoof_rules[i].spoofed_source,
 			SUSFS_MAX_LEN_PATHNAME - 1);
-		entry->spoofed_source[SUSFS_MAX_LEN_PATHNAME - 1] = '\0';
 
 		/* No mutex needed here — called from init context, single-threaded */
-		list_add_tail(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
+		list_add_tail_rcu(&entry->list, &LH_MOUNT_SOURCE_SPOOF);
 
 		pr_info("susfs: auto_mount_spoof: registered '%s' -> '%s'\n",
 			entry->target_mountpoint, entry->spoofed_source);
@@ -739,7 +764,7 @@ __attribute__((hot)) bool susfs_is_inode_sus_kstat(struct inode *inode, bool *ou
 		return false;
 	if (inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
 		fi = get_fuse_inode(inode);
-		if (!fi || !fi->inode.i_mapping) {
+		if (unlikely(!fi || !fi->inode.i_mapping)) {
 			SUSFS_LOGE("fi || fi->inode.i_mapping is NULL\n");
 			return false;
 		}
@@ -749,13 +774,29 @@ __attribute__((hot)) bool susfs_is_inode_sus_kstat(struct inode *inode, bool *ou
 		}
 		return false;
 	}
-	if (!inode->i_mapping) {
+	if (unlikely(!inode->i_mapping)) {
 		SUSFS_LOGE("inode->i_mapping is NULL\n");
 		return false;
 	}
 	if (test_bit(AS_FLAGS_SUS_KSTAT, &inode->i_mapping->flags))
 		return true;
 	return false;
+}
+
+/* Resolve the (ino, dev) identity of a sus-kstat inode in one pass.
+ * Caller must have passed susfs_is_inode_sus_kstat() first, so the
+ * get_fuse_inode() chase below never repeats work already done there. */
+static void susfs_sus_kstat_get_target_id(struct inode *inode, bool is_fuse,
+				unsigned long *out_ino, dev_t *out_dev)
+{
+	if (is_fuse) {
+		struct fuse_inode *fi = get_fuse_inode(inode);
+		*out_ino = fi->inode.i_ino;
+		*out_dev = fi->inode.i_sb->s_dev;
+		return;
+	}
+	*out_ino = inode->i_ino;
+	*out_dev = inode->i_sb->s_dev;
 }
 
 void susfs_sus_kstat_spoof_generic_fillattr(struct inode *inode, struct kstat *stat)
@@ -768,17 +809,8 @@ void susfs_sus_kstat_spoof_generic_fillattr(struct inode *inode, struct kstat *s
 	if (!susfs_is_inode_sus_kstat(inode, &is_fuse))
 		return;
 
-	if (is_fuse) {
-		struct fuse_inode *fi = get_fuse_inode(inode);
-		target_ino = fi->inode.i_ino;
-		target_dev = fi->inode.i_sb->s_dev;
-		goto out_spoof_kstat;
-	}
+	susfs_sus_kstat_get_target_id(inode, is_fuse, &target_ino, &target_dev);
 
-	target_ino = inode->i_ino;
-	target_dev = inode->i_sb->s_dev;
-
-out_spoof_kstat:
 	rcu_read_lock();
 	hash_for_each_possible_rcu(SUS_KSTAT_HLIST, entry, node, target_ino) {
 		if (entry->target_dev == target_dev &&
@@ -826,17 +858,8 @@ void susfs_sus_kstat_spoof_show_map_vma(struct inode *inode, dev_t *out_dev, uns
 	if (!susfs_is_inode_sus_kstat(inode, &is_fuse))
 		return;
 
-	if (is_fuse) {
-		struct fuse_inode *fi = get_fuse_inode(inode);
-		target_ino = fi->inode.i_ino;
-		target_dev = fi->inode.i_sb->s_dev;
-		goto out_spoof_kstat;
-	}
+	susfs_sus_kstat_get_target_id(inode, is_fuse, &target_ino, &target_dev);
 
-	target_ino = inode->i_ino;
-	target_dev = inode->i_sb->s_dev;
-
-out_spoof_kstat:
 	rcu_read_lock();
 	hash_for_each_possible_rcu(SUS_KSTAT_HLIST, entry, node, target_ino) {
 		if (entry->target_dev == target_dev &&
@@ -1230,31 +1253,38 @@ out_copy_to_user:
 struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode) {
 	struct st_susfs_open_redirect_hlist *entry = NULL;
 	struct filename *new_filename = NULL;
+	/* Loop invariants hoisted: current task state cannot change
+	 * while walking the hash bucket. */
+	uid_t cur_uid = current_uid().val;
+	dev_t s_dev = inode->i_sb->s_dev;
+	bool is_ksu_domain = susfs_is_current_ksu_domain();
+	bool is_umounted_app = susfs_is_current_proc_umounted_app();
+	bool is_umounted = susfs_is_current_proc_umounted();
 	int srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
 
 	hash_for_each_possible_rcu(OPEN_REDIRECT_HLIST, entry, node, inode->i_ino) {
-		if (!entry->reversed_lookup_only &&
-			entry->target_dev == inode->i_sb->s_dev)
+		if (entry->target_dev == s_dev &&
+			!entry->reversed_lookup_only)
 		{
 			switch(entry->info.uid_scheme) {
 				case UID_NON_APP_PROC:
-					if (current_uid().val % 100000 < 10000)
+					if (cur_uid % 100000 < 10000)
 						break;
 					goto out_srcu_read_unlock;
 				case UID_ROOT_PROC_EXCEPT_SU_PROC:
-					if (current_uid().val == 0 && !susfs_is_current_ksu_domain())
+					if (cur_uid == 0 && !is_ksu_domain)
 						break;
 					goto out_srcu_read_unlock;
 				case UID_NON_SU_PROC:
-					if (!susfs_is_current_ksu_domain())
+					if (!is_ksu_domain)
 						break;
 					goto out_srcu_read_unlock;
 				case UID_UMOUNTED_APP_PROC:
-					if (susfs_is_current_proc_umounted_app())
+					if (is_umounted_app)
 						break;
 					goto out_srcu_read_unlock;
 				case UID_UMOUNTED_PROC:
-					if (susfs_is_current_proc_umounted())
+					if (is_umounted)
 						break;
 					goto out_srcu_read_unlock;
 				default:
@@ -1467,10 +1497,14 @@ void susfs_get_enabled_features(void __user **user_info) {
 	struct st_susfs_enabled_features *info = (struct st_susfs_enabled_features *)kzalloc(sizeof(struct st_susfs_enabled_features), GFP_KERNEL);
 	char *buf_ptr = NULL;
 	size_t copied_size = 0;
+	int err = 0;
 
 	if (!info) {
-		info->err = -ENOMEM;
-		goto out_copy_to_user;
+		err = -ENOMEM;
+		if (copy_to_user(&((struct st_susfs_enabled_features __user*)*user_info)->err, &err, sizeof(err)))
+			err = -EFAULT;
+		SUSFS_LOGI("CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: %d\n", err);
+		return;
 	}
 
 	if (copy_from_user(info, (struct st_susfs_enabled_features __user*)*user_info, sizeof(struct st_susfs_enabled_features))) {
