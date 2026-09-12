@@ -240,110 +240,11 @@ jobs:
           sleep 60
         done
 
-    - name: Upload Artifact - SE OC805
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ env.KERNEL_NAME }}-SE-OC805
-        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC805-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - SE OC820
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-SE-OC820
-        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC820-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - SE OC835
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-SE-OC835
-        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC835-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - SE OC844
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-SE-OC844
-        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC844-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - NSE OC805
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-NSE-OC805
-        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC805-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - NSE OC820
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-NSE-OC820
-        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC820-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - NSE OC835
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-NSE-OC835
-        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC835-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - NSE OC844
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-NSE-OC844
-        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC844-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - Dynamic OC805
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-Dynamic-OC805
-        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC805-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - Dynamic OC820
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-Dynamic-OC820
-        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC820-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - Dynamic OC835
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-Dynamic-OC835
-        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC835-*.zip
-        if-no-files-found: error
-        retention-days: 90
-        compression-level: 0
-
-    - name: Upload Artifact - Dynamic OC844
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ env.KERNEL_NAME }}-Dynamic-OC844
-        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC844-*.zip
+        name: ${{ env.KERNEL_NAME }}-ZIPs
+        path: out/zip/*.zip
         if-no-files-found: error
         retention-days: 90
         compression-level: 0
@@ -381,6 +282,22 @@ jobs:
           echo "> Back up to Telegram / mirror before they expire!"
         } >> $GITHUB_STEP_SUMMARY
         ls -lh out/zip/
+
+    - name: Attach Artifact Download Links
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        {
+          echo ""
+          echo "## Downloads"
+          echo ""
+          echo "| Artifact | Link |"
+          echo "|---|---|"
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
+            --paginate \
+            -q '.artifacts[] | "| `\(.name)` | [download](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/\(.id)) |"' 2>/dev/null \
+          || echo "| - | artifact list unavailable |"
+        } >> $GITHUB_STEP_SUMMARY
 
     - name: Export Release Vars
       id: vars
