@@ -12,9 +12,107 @@ permissions:
   actions: read
 
 jobs:
+  checkout-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Clone AnyKernel3
+      run: |
+        mkdir -p tools
+        cd tools
+        git clone https://github.com/xMikkkaa/AnyKernel3.git AnyKernel3
+
+    - name: Apply SELinux Hide Patch to KernelSU
+      run: |
+        if [ -f "scripts/ksu_selinux_hide.patch" ]; then
+          cd KernelSU
+          if patch -p1 --dry-run < ../scripts/ksu_selinux_hide.patch; then
+            patch -p1 < ../scripts/ksu_selinux_hide.patch
+          else
+            echo "Plain patch missed, retrying 3-way against submodule history..."
+            git apply --3way --whitespace=fix ../scripts/ksu_selinux_hide.patch
+          fi
+        fi
+
+    - name: Validate Source Prep
+      run: |
+        test -d KernelSU || { echo "KernelSU missing!"; exit 1; }
+        test -f tools/AnyKernel3/anykernel.sh || { echo "AnyKernel3 broken!"; exit 1; }
+        echo "## checkout-source: OK" >> $GITHUB_STEP_SUMMARY
+        echo "Checkout + AnyKernel3 + SELinux patch valid." >> $GITHUB_STEP_SUMMARY
+
+  setup-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Setup Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev zip unzip curl git python3 python3-requests \
+          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-none-eabi
+
+    - name: Validate Environment
+      run: |
+        echo "## setup-environment: OK" >> $GITHUB_STEP_SUMMARY
+        echo "apt deps installed, package list valid." >> $GITHUB_STEP_SUMMARY
+
+  setup-clang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Cache Neutron Clang
+      id: cache-neutron
+      uses: actions/cache@v6
+      with:
+        path: neutron-clang
+        key: neutron-clang-cache
+
+    - name: Setup Neutron Clang
+      run: |
+        mkdir -p neutron-clang
+        cd neutron-clang
+        if [ ! -f "antman" ]; then
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+        fi
+        ./antman -S
+
+    - name: Add Neutron Clang to PATH
+      run: |
+        echo "$(pwd)/neutron-clang/bin" >> $GITHUB_PATH
+
+    - name: Verify Compiler Version
+      run: |
+        echo "=== Compiler Versions ==="
+        clang --version
+        ld.lld --version
+        {
+          echo "## setup-clang: OK"
+          echo ""
+          echo "- Cache hit: \`${{ steps.cache-neutron.outputs.cache-hit }}\`"
+          echo ""
+          echo '```'
+          clang --version | head -2
+          echo '```'
+          echo "This cache is reused by the \`build\` job (warming)."
+        } >> $GITHUB_STEP_SUMMARY
+
   build:
     runs-on: ubuntu-latest
-    
+    needs: [checkout-source, setup-environment, setup-clang]
+    timeout-minutes: 90
+    outputs:
+      kernel-name: ${{ steps.vars.outputs.kernel-name }}
+      ksu-version: ${{ steps.vars.outputs.ksu-version }}
+      duration: ${{ steps.vars.outputs.duration }}
+      
     steps:
     - name: Checkout Kernel Source
       uses: actions/checkout@v7
@@ -99,13 +197,40 @@ jobs:
             mv "$zip" "out/zip/${BASENAME}-${KSU_VERSION}.zip"
         done
 
+        # 12 files are self-describing (SE / NSE / Dynamic).
+        for zip in out/zip/*.zip; do
+            [ -e "$zip" ] || continue
+            case "$zip" in
+              *-NSE-*|*-Dynamic-*) continue ;;
+            esac
+            mv "$zip" "${zip/${KERNEL_NAME}-OC/${KERNEL_NAME}-SE-OC}"
+        done
+
+        # Hard validation: env must be set + exactly 12 zips (fail LOUD, not warn)
+        [ -n "${KSU_VERSION}" ] || { echo "KSU_VERSION is empty, build is broken!"; exit 1; }
+        [ -n "${KERNEL_NAME}" ] || { echo "KERNEL_NAME is empty, build is broken!"; exit 1; }
+        COUNT=$(ls out/zip/*.zip 2>/dev/null | wc -l)
+        echo "ZIP_COUNT=${COUNT}" >> $GITHUB_ENV
+        if [ "${COUNT}" -ne 12 ]; then
+          echo "Expected 12 zips, found ${COUNT}:"
+          ls -lh out/zip/ || true
+          exit 1
+        fi
+        echo "OK: 12/12 zips (${KERNEL_NAME}, KSU ${KSU_VERSION})"
+
 
     - name: Wait for older builds to finish
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         echo "Checking for older running jobs to ensure chronological releases..."
+        TRIES=0
         while true; do
+          TRIES=$((TRIES + 1))
+          if [ "$TRIES" -gt 30 ]; then
+            echo "Waited 30 minutes, older runs never finished. Failing loud instead of hanging."
+            exit 1
+          fi
           OLDER_RUNS=$(gh run list --repo ${{ github.repository }} --workflow build.yml --branch ${{ github.ref_name }} --json databaseId,status --jq "[.[] | select(.databaseId < ${{ github.run_id }} and (.status == \"in_progress\" or .status == \"queued\" or .status == \"pending\" or .status == \"requested\" or .status == \"waiting\"))] | length")
           if [ -z "$OLDER_RUNS" ] || [ "$OLDER_RUNS" -eq 0 ]; then
             echo "No older runs pending. Proceeding!"
@@ -115,11 +240,191 @@ jobs:
           sleep 60
         done
 
-    - name: Upload Artifacts
+    - name: Upload Artifact - SE OC805
       uses: actions/upload-artifact@v7
       with:
-        name: Chimera-Kernel-ZIPs
-        path: out/zip/*.zip
+        name: ${{ env.KERNEL_NAME }}-SE-OC805
+        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC805-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - SE OC820
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-SE-OC820
+        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC820-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - SE OC835
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-SE-OC835
+        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC835-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - SE OC844
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-SE-OC844
+        path: out/zip/${{ env.KERNEL_NAME }}-SE-OC844-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - NSE OC805
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-NSE-OC805
+        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC805-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - NSE OC820
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-NSE-OC820
+        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC820-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - NSE OC835
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-NSE-OC835
+        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC835-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - NSE OC844
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-NSE-OC844
+        path: out/zip/${{ env.KERNEL_NAME }}-NSE-OC844-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - Dynamic OC805
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-Dynamic-OC805
+        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC805-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - Dynamic OC820
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-Dynamic-OC820
+        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC820-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - Dynamic OC835
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-Dynamic-OC835
+        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC835-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Upload Artifact - Dynamic OC844
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ env.KERNEL_NAME }}-Dynamic-OC844
+        path: out/zip/${{ env.KERNEL_NAME }}-Dynamic-OC844-*.zip
+        if-no-files-found: error
+        retention-days: 90
+        compression-level: 0
+
+    - name: Build Summary
+      run: |
+        {
+          echo "# Build done: ${KERNEL_NAME}"
+          echo ""
+          echo "- ReSukiSU: \`${KSU_VERSION}\` | Branch: \`${GITHUB_REF_NAME}\` | Duration: \`${{ env.DURATION }}\`"
+          echo "- Commit: \`$(git rev-parse --short HEAD)\` | [Logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          echo ""
+          echo "## Toolchain"
+          echo ""
+          echo "| Component | Version |"
+          echo "|---|---|"
+          echo "| clang | \`$(clang --version | head -1)\` |"
+          echo "| ld.lld | \`$(ld.lld --version | head -1)\` |"
+          echo ""
+          echo "## Variants (12 files, $(du -sh out/zip | cut -f1) total)"
+          for FLAVOR in SE NSE Dynamic; do
+            echo ""
+            echo "### ${FLAVOR}"
+            echo ""
+            echo "| File | Size |"
+            echo "|---|---|"
+            for f in out/zip/*-${FLAVOR}-OC*.zip; do
+              [ -e "$f" ] || continue
+              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+            done | sort
+          done
+          echo ""
+          echo "> GitHub auto-deletes artifacts after 90 days"
+          echo "> (public repo retention: 1-90 days, default 90)."
+          echo "> Back up to Telegram / mirror before they expire!"
+        } >> $GITHUB_STEP_SUMMARY
+        ls -lh out/zip/
+
+    - name: Export Release Vars
+      id: vars
+      run: |
+        echo "kernel-name=${KERNEL_NAME}" >> $GITHUB_OUTPUT
+        echo "ksu-version=${KSU_VERSION}" >> $GITHUB_OUTPUT
+        echo "duration=${DURATION}" >> $GITHUB_OUTPUT
+
+    - name: Notify Telegram on Failure
+      if: failure()
+      env:
+        TG_TOKEN: ${{ secrets.TG_TOKEN }}
+        TG_DUMP_CHAT_ID: ${{ secrets.TG_DUMP_CHAT_ID }}
+        TG_DUMP_THREAD_ID: ${{ secrets.TG_DUMP_THREAD_ID }}
+      run: |
+        COMMIT=$(git rev-parse --short HEAD)
+        MSG="<b>Build Failed</b> · Chimera-CI%0A"
+        MSG+="<code>${GITHUB_REF_NAME}</code> · <code>${COMMIT}</code>%0A"
+        MSG+="<a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#${GITHUB_RUN_NUMBER} · View logs</a>"
+        curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+          -d "chat_id=${TG_DUMP_CHAT_ID}" \
+          -d "message_thread_id=${TG_DUMP_THREAD_ID}" \
+          -d "parse_mode=HTML" \
+          -d "text=${MSG}"
+
+  notify-telegram:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Download Kernel ZIPs
+      uses: actions/download-artifact@v7
+      with:
+        pattern: ${{ needs.build.outputs.kernel-name }}-*
+        path: out/zip
+        merge-multiple: true
 
     - name: Telegram Notification & Commit Log
       continue-on-error: true
@@ -128,6 +433,9 @@ jobs:
         TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         TG_DUMP_CHAT_ID: ${{ secrets.TG_DUMP_CHAT_ID }}
         TG_DUMP_THREAD_ID: ${{ secrets.TG_DUMP_THREAD_ID }}
+        KERNEL_NAME: ${{ needs.build.outputs.kernel-name }}
+        KSU_VERSION: ${{ needs.build.outputs.ksu-version }}
+        DURATION: ${{ needs.build.outputs.duration }}
       run: |
         ls -lh out/zip/
         find out/zip -type f -size 0 -print || true
@@ -139,18 +447,21 @@ jobs:
             # KernelSU was updated
             RAW_MSG=$(cd KernelSU && git log -1 --pretty=format:"%B")
             AUTHOR_NAME=$(cd KernelSU && git log -1 --pretty=format:"%an")
-            COMMIT_MSG="[ReSukiSU Update] ${RAW_MSG} by ${AUTHOR_NAME}"
+            PREFIX="[ReSukiSU Update] "
         else
             # Chimera was updated
             RAW_MSG="$(git log -1 --pretty=format:"%B")"
             AUTHOR_NAME="$(git log -1 --pretty=format:"%an")"
-            COMMIT_MSG="${RAW_MSG} by ${AUTHOR_NAME}"
+            PREFIX=""
         fi
+        SUFFIX=" by ${AUTHOR_NAME}"
 
         # Keep the full message unless it exceeds Telegram's safe message budget.
-        if [ "${#COMMIT_MSG}" -gt 3192 ]; then
-            COMMIT_MSG="${COMMIT_MSG:0:3189}..."
+        BUDGET=$((3192 - ${#PREFIX} - ${#SUFFIX} - 3))
+        if [ "${#RAW_MSG}" -gt "$BUDGET" ]; then
+            RAW_MSG="${RAW_MSG:0:$BUDGET}..."
         fi
+        COMMIT_MSG="${PREFIX}${RAW_MSG}${SUFFIX}"
         
         # Escape HTML characters in COMMIT_MSG for Telegram
         COMMIT_MSG=$(printf '%s' "$COMMIT_MSG" | sed 's/&/&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
@@ -159,8 +470,8 @@ jobs:
         CAPTION="<b>${KERNEL_NAME}</b>
         <a href=\"https://t.me/ReSukiSU\">ReSukiSU Version: ${KSU_VERSION}</a>
         Branch: ${BRANCH}
-        <a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#ci_${COMMIT}</a>
-        Duration: ${{ env.DURATION }}
+        Workflow: <a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#ci_${COMMIT}</a>
+        Duration: ${DURATION}
         
         <pre><code class=\"language-copy\">${COMMIT_MSG}</code></pre>"
         
@@ -325,6 +636,16 @@ jobs:
             api_post("sendMessage", data)
         PY
 
+    - name: Notify Summary
+      run: |
+        {
+          echo "## notify-telegram: done"
+          echo ""
+          echo "- Kernel: \`${{ needs.build.outputs.kernel-name }}\` | KSU: \`${{ needs.build.outputs.ksu-version }}\` | Build duration: \`${{ needs.build.outputs.duration }}\`"
+          echo "- ZIPs downloaded: $(ls out/zip/*.zip 2>/dev/null | wc -l)"
+          echo "- Artifact retention: GitHub auto-deletes artifacts after 90 days."
+        } >> $GITHUB_STEP_SUMMARY
+
     - name: Notify Telegram on Failure
       if: failure()
       env:
@@ -333,7 +654,7 @@ jobs:
         TG_DUMP_THREAD_ID: ${{ secrets.TG_DUMP_THREAD_ID }}
       run: |
         COMMIT=$(git rev-parse --short HEAD)
-        MSG="⚠️ <b>Build Failed</b> · Chimera-CI%0A"
+        MSG="<b>Notify Failed</b> · Chimera-CI%0A"
         MSG+="<code>${GITHUB_REF_NAME}</code> · <code>${COMMIT}</code>%0A"
         MSG+="<a href=\"https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\">#${GITHUB_RUN_NUMBER} · View logs</a>"
         curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
