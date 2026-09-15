@@ -117,8 +117,9 @@ int vfs_statfs(struct path *path, struct kstatfs *buf)
 		struct inode *kstat_inode = d_backing_inode(path->dentry);
 		bool is_fuse = false;
 		if (susfs_is_inode_sus_kstat(kstat_inode, &is_fuse)) {
-			error = susfs_statfs_by_dentry(path->dentry, buf, &is_fuse);
-			goto bypass_orig_flow;
+			/* buf->f_flags is already spoofed by
+			 * susfs_statfs_by_dentry(), do not rewrite it below. */
+			return susfs_statfs_by_dentry(path->dentry, buf, &is_fuse);
 		}
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
@@ -131,7 +132,9 @@ int vfs_statfs(struct path *path, struct kstatfs *buf)
 			dput(no_sus_vfsmnt->mnt_root);
 			mntput(no_sus_vfsmnt);
 			error = statfs_by_dentry(path->dentry, buf);
-			goto bypass_orig_flow;
+			if (!error)
+				buf->f_flags = calculate_f_flags(path->mnt);
+			return error;
 		}
 		error = statfs_by_dentry(no_sus_vfsmnt->mnt_root, buf);
 		if (!error)
@@ -147,9 +150,6 @@ orig_flow:
 #endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
 
 	error = statfs_by_dentry(path->dentry, buf);
-#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
-bypass_orig_flow:
-#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
 	if (!error)
 		buf->f_flags = calculate_f_flags(path->mnt);
 	return error;
