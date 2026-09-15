@@ -2336,6 +2336,10 @@ int policydb_read(struct policydb *p, void *fp)
 		p->android_netlink_route = 1;
 	}
 
+	if ((le32_to_cpu(buf[1]) & POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH)) {
+		p->android_netlink_getneigh = 1;
+	}
+
 	if (p->policyvers >= POLICYDB_VERSION_POLCAP) {
 		rc = ebitmap_read(&p->policycaps, fp);
 		if (rc)
@@ -3374,6 +3378,10 @@ int policydb_write(struct policydb *p, void *fp)
 		config |= REJECT_UNKNOWN;
 	if (p->allow_unknown)
 		config |= ALLOW_UNKNOWN;
+	if (p->android_netlink_route)
+		config |= POLICYDB_CONFIG_ANDROID_NETLINK_ROUTE;
+	if (p->android_netlink_getneigh)
+		config |= POLICYDB_CONFIG_ANDROID_NETLINK_GETNEIGH;
 
 	/* Write the magic number and string identifiers. */
 	buf[0] = cpu_to_le32(POLICYDB_MAGIC);
