@@ -36,6 +36,15 @@
 #include <linux/user_namespace.h>
 #include "internal.h"
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include <linux/susfs_def.h>
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern bool susfs_is_current_ksu_domain(void);
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 
 static LIST_HEAD(super_blocks);
 static DEFINE_SPINLOCK(sb_lock);
@@ -926,6 +935,35 @@ int get_anon_bdev(dev_t *p)
 {
 	int dev;
 	int error;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
+		if (susfs_is_current_ksu_domain()) {
+			/* 4.9 uses the legacy ida API (no ida_alloc_range),
+			 * so allocate from the high minor range instead. */
+		retry_ksu_minor:
+			if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)
+				return -ENOMEM;
+			spin_lock(&unnamed_dev_lock);
+			error = ida_get_new_above(&unnamed_dev_ida,
+						  DEFAULT_KSU_MNT_MINOR_DEV, &dev);
+			spin_unlock(&unnamed_dev_lock);
+			if (error == -EAGAIN)
+				/* We raced and lost with another CPU. */
+				goto retry_ksu_minor;
+			else if (error)
+				return -EAGAIN;
+			if (unlikely(dev >= (1 << MINORBITS))) {
+				spin_lock(&unnamed_dev_lock);
+				ida_remove(&unnamed_dev_ida, dev);
+				spin_unlock(&unnamed_dev_lock);
+				return -EMFILE;
+			}
+			*p = MKDEV(0, dev);
+			return 0;
+		}
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
  retry:
 	if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)
