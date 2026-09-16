@@ -102,6 +102,202 @@ static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
 static unsigned int stale_ns;
 static DEFINE_PER_CPU(struct sugov_tunables *, cached_tunables);
 
+/**************************************************************
+ * Minimal intfp log-domain helpers for hispeed decay.
+ * Specialized from intfp.h (v1.4) for u32 <-> log32fpmax_corr.
+ * Ported from the Reflex governor.
+ */
+#define SUGOV_LOG_OFP		26
+#define SUGOV_LOG_0		S32_MIN
+#define SUGOV_LOG_DECAY_PER_MS	(-2097152)	/* log2(0.97857206) in Q5.26 */
+#define SUGOV_LOG_DECAY_MAX_MS	320		/* 10 half-lives */
+
+static const u16 sugov_enc_corr_lut[256] = {
+	    0,    89,   177,   264,   350,   436,   521,   606,   690,   773,   855,   937,  1018,  1098,  1178,  1257,
+	 1335,  1413,  1489,  1565,  1641,  1716,  1790,  1863,  1936,  2008,  2079,  2150,  2219,  2289,  2357,  2425,
+	 2492,  2558,  2624,  2689,  2753,  2817,  2880,  2942,  3004,  3065,  3125,  3184,  3243,  3301,  3358,  3415,
+	 3471,  3526,  3581,  3635,  3688,  3740,  3792,  3843,  3894,  3943,  3992,  4041,  4088,  4135,  4182,  4227,
+	 4272,  4316,  4360,  4402,  4444,  4486,  4526,  4566,  4606,  4644,  4682,  4719,  4756,  4792,  4827,  4861,
+	 4895,  4928,  4960,  4992,  5023,  5053,  5083,  5112,  5140,  5167,  5194,  5220,  5245,  5270,  5294,  5317,
+	 5340,  5362,  5383,  5404,  5423,  5443,  5461,  5479,  5496,  5512,  5528,  5543,  5557,  5570,  5583,  5596,
+	 5607,  5618,  5628,  5637,  5646,  5654,  5661,  5668,  5674,  5679,  5683,  5687,  5690,  5693,  5695,  5696,
+	 5696,  5696,  5695,  5693,  5690,  5687,  5683,  5679,  5674,  5668,  5661,  5654,  5646,  5637,  5628,  5618,
+	 5607,  5596,  5583,  5570,  5557,  5543,  5528,  5512,  5496,  5479,  5461,  5443,  5423,  5404,  5383,  5362,
+	 5340,  5317,  5294,  5270,  5245,  5220,  5194,  5167,  5140,  5112,  5083,  5053,  5023,  4992,  4960,  4928,
+	 4895,  4861,  4827,  4792,  4756,  4719,  4682,  4644,  4606,  4566,  4526,  4486,  4444,  4402,  4360,  4316,
+	 4272,  4227,  4182,  4135,  4088,  4041,  3992,  3943,  3894,  3843,  3792,  3740,  3688,  3635,  3581,  3526,
+	 3471,  3415,  3358,  3301,  3243,  3184,  3125,  3065,  3004,  2942,  2880,  2817,  2753,  2689,  2624,  2558,
+	 2492,  2425,  2357,  2289,  2219,  2150,  2079,  2008,  1936,  1863,  1790,  1716,  1641,  1565,  1489,  1413,
+	 1335,  1257,  1178,  1098,  1018,   937,   855,   773,   690,   606,   521,   436,   350,   264,   177,    89,
+};
+
+static const u16 sugov_dec_corr_lut[256] = {
+	    0,    88,   175,   261,   346,   431,   516,   599,   682,   764,   846,   926,  1006,  1086,  1165,  1243,
+	 1320,  1397,  1473,  1548,  1622,  1696,  1770,  1842,  1914,  1985,  2056,  2125,  2194,  2263,  2331,  2398,
+	 2464,  2530,  2595,  2659,  2722,  2785,  2848,  2909,  2970,  3030,  3090,  3148,  3206,  3264,  3321,  3377,
+	 3432,  3487,  3541,  3594,  3646,  3698,  3750,  3800,  3850,  3899,  3948,  3995,  4042,  4089,  4135,  4180,
+	 4224,  4268,  4311,  4353,  4394,  4435,  4476,  4515,  4554,  4592,  4630,  4666,  4702,  4738,  4773,  4807,
+	 4840,  4873,  4905,  4936,  4966,  4996,  5026,  5054,  5082,  5109,  5136,  5161,  5186,  5211,  5235,  5258,
+	 5280,  5302,  5323,  5343,  5362,  5381,  5400,  5417,  5434,  5450,  5466,  5480,  5494,  5508,  5521,  5533,
+	 5544,  5555,  5565,  5574,  5582,  5590,  5598,  5604,  5610,  5615,  5620,  5623,  5626,  5629,  5631,  5632,
+	 5632,  5632,  5631,  5629,  5626,  5623,  5620,  5615,  5610,  5604,  5598,  5590,  5582,  5574,  5565,  5555,
+	 5544,  5533,  5521,  5508,  5494,  5480,  5466,  5450,  5434,  5417,  5400,  5381,  5362,  5343,  5323,  5302,
+	 5280,  5258,  5235,  5211,  5186,  5161,  5136,  5109,  5082,  5054,  5026,  4996,  4966,  4936,  4905,  4873,
+	 4840,  4807,  4773,  4738,  4702,  4666,  4630,  4592,  4554,  4515,  4476,  4435,  4394,  4353,  4311,  4268,
+	 4224,  4180,  4135,  4089,  4042,  3995,  3948,  3899,  3850,  3800,  3750,  3698,  3646,  3594,  3541,  3487,
+	 3432,  3377,  3321,  3264,  3206,  3148,  3090,  3030,  2970,  2909,  2848,  2785,  2722,  2659,  2595,  2530,
+	 2464,  2398,  2331,  2263,  2194,  2125,  2056,  1985,  1914,  1842,  1770,  1696,  1622,  1548,  1473,  1397,
+	 1320,  1243,  1165,  1086,  1006,   926,   846,   764,   682,   599,   516,   431,   346,   261,   175,    88,
+};
+
+static inline s32 sugov_lin_to_log(u32 v)
+{
+	u8 clz;
+	u32 m, mf;
+	u8 idx;
+
+	if (!v)
+		return SUGOV_LOG_0;
+
+	clz = __builtin_clz(v);
+	m = (v << clz) >> (32 - 1 - SUGOV_LOG_OFP);
+	mf = m & ((1U << SUGOV_LOG_OFP) - 1);
+	idx = (u8)(mf >> (SUGOV_LOG_OFP - 8));
+	m += (u32)sugov_enc_corr_lut[idx] << (SUGOV_LOG_OFP - 16);
+
+	return (s32)(((u32)(30 - clz) << SUGOV_LOG_OFP) + m);
+}
+
+static inline u32 sugov_log_to_lin(s32 v)
+{
+	bool negative;
+	s32 e;
+	u32 m, norm, mh;
+	u8 idx;
+
+	if (v == SUGOV_LOG_0)
+		return 0;
+
+	negative = v < 0;
+	if (negative)
+		v = -v;
+	e = v >> SUGOV_LOG_OFP;
+	if (negative)
+		e = -e;
+
+	if (e < 0)
+		return 0;
+	if (e >= 32)
+		return U32_MAX;
+
+	m = v & ((1U << SUGOV_LOG_OFP) - 1);
+	norm = (1U << 31) | (m << (31 - SUGOV_LOG_OFP));
+	mh = m << (31 - SUGOV_LOG_OFP);
+	idx = (u8)(mh >> (31 - 8));
+	norm -= (u32)sugov_dec_corr_lut[idx] << (31 - 16);
+
+	return norm >> (31 - e);
+}
+
+/************************ Hispeed (idle-time accounting) ***********************/
+
+static void sugov_update_busy_pct(struct sugov_cpu *sg_cpu,
+				unsigned int window_us,
+				unsigned int filter_shift, u64 time,
+				unsigned long max_cap)
+{
+	u64 cur_idle, cur_wall;
+	unsigned int wall_delta, idle_delta;
+
+	cur_idle = get_cpu_idle_time(sg_cpu->cpu, &cur_wall, 1);
+	wall_delta = (unsigned int)(cur_wall - sg_cpu->prev_wall_time);
+
+	if (wall_delta >= window_us) {
+		sg_cpu->busy_pct = 0;
+		sg_cpu->hispeed_active = true;
+		sg_cpu->prev_idle_time = cur_idle;
+		sg_cpu->prev_wall_time = cur_wall;
+		return;
+	}
+
+	if (!sg_cpu->hispeed_active)
+		return;
+
+	sg_cpu->hispeed_active = false;
+
+	if (cur_idle > sg_cpu->prev_idle_time)
+		idle_delta = (unsigned int)(cur_idle - sg_cpu->prev_idle_time);
+	else
+		idle_delta = 0;
+
+	if (wall_delta > idle_delta)
+		sg_cpu->busy_pct = 100 * (wall_delta - idle_delta) / wall_delta;
+	else
+		sg_cpu->busy_pct = 0;
+
+	sg_cpu->prev_idle_time = cur_idle;
+	sg_cpu->prev_wall_time = cur_wall;
+
+	if (!filter_shift || sg_cpu->busy_pct >= sg_cpu->filtered_busy_pct) {
+		sg_cpu->filtered_busy_pct = sg_cpu->busy_pct;
+	} else {
+		unsigned int step =
+			(sg_cpu->filtered_busy_pct - sg_cpu->busy_pct)
+			>> filter_shift;
+		if (step)
+			sg_cpu->filtered_busy_pct -= step;
+		else
+			sg_cpu->filtered_busy_pct = sg_cpu->busy_pct;
+	}
+
+	if (sg_cpu->filtered_busy_pct > 0) {
+		sg_cpu->hispeed_idle_windows = 0;
+		if (!sg_cpu->hispeed_start_ns)
+			sg_cpu->hispeed_start_ns = time;
+		sg_cpu->log_hispeed = sugov_lin_to_log(
+			max_cap * sg_cpu->filtered_busy_pct / 100);
+	} else {
+		sg_cpu->hispeed_idle_windows++;
+		if (sg_cpu->hispeed_idle_windows >= 2) {
+			sg_cpu->hispeed_start_ns = 0;
+			sg_cpu->filtered_busy_pct = 0;
+			sg_cpu->log_hispeed = SUGOV_LOG_0;
+		}
+	}
+}
+
+static unsigned long sugov_blend_util(struct sugov_cpu *sg_cpu,
+				    unsigned long pelt_util,
+				    unsigned long max_cap,
+				    u64 time)
+{
+	unsigned long hispeed_util, hispeed_decayed;
+	unsigned int elapsed_ms;
+	s32 log_decayed;
+
+	if (!sg_cpu->filtered_busy_pct || !sg_cpu->hispeed_start_ns)
+		return pelt_util;
+
+	hispeed_util = max_cap * sg_cpu->filtered_busy_pct / 100;
+
+	if (hispeed_util <= pelt_util)
+		return pelt_util;
+
+	elapsed_ms = (unsigned int)((time - sg_cpu->hispeed_start_ns)
+				    / NSEC_PER_MSEC);
+	if (elapsed_ms >= SUGOV_LOG_DECAY_MAX_MS)
+		return pelt_util;
+
+	log_decayed = sg_cpu->log_hispeed +
+		      (s32)elapsed_ms * SUGOV_LOG_DECAY_PER_MS;
+	hispeed_decayed = sugov_log_to_lin(log_decayed);
+
+	if (hispeed_decayed <= pelt_util)
+		return pelt_util;
+
+	return min(pelt_util + hispeed_decayed, hispeed_util);
+}
+
 /************************ Governor internals ***********************/
 
 static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
