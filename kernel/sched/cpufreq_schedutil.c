@@ -634,6 +634,11 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 					sg_cpu->walt_load.pl, flags);
 		sugov_iowait_boost(sg_cpu, &util, &max);
 		sugov_walt_adjust(sg_cpu, &util, &max);
+		/* Blend WALT/PELT util with decaying busy% hispeed floor */
+		sugov_update_busy_pct(sg_cpu, sg_policy->tunables->hispeed_window_us,
+				      sg_policy->tunables->hispeed_filter_shift,
+				      time, max);
+		util = sugov_blend_util(sg_cpu, util, max, time);
 		next_f = get_next_freq(sg_policy, util, max);
 		/*
 		 * Do not reduce the frequency if the CPU has not been idle
@@ -691,6 +696,13 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 
 		sugov_iowait_boost(j_sg_cpu, &util, &max);
 		sugov_walt_adjust(j_sg_cpu, &util, &max);
+
+		/* Blend WALT/PELT util with decaying busy% hispeed floor per CPU */
+		sugov_update_busy_pct(j_sg_cpu,
+				      sg_policy->tunables->hispeed_window_us,
+				      sg_policy->tunables->hispeed_filter_shift,
+				      time, max);
+		util = sugov_blend_util(j_sg_cpu, util, max, time);
 	}
 
 	return get_next_freq(sg_policy, util, max);
