@@ -31,7 +31,7 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #if defined(CONFIG_UCLAMP_TASK)
-#include <uapi/linux/sched/types.h>
+#include <uapi/linux/sched.h>
 #endif
 #include <trace/events/sched.h>
 #include "sched.h"
