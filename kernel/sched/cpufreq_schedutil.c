@@ -27,6 +27,8 @@ struct sugov_tunables {
 	unsigned int down_rate_limit_us;
 	unsigned int hispeed_load;
 	unsigned int hispeed_freq;
+	unsigned int hispeed_window_us;    /* observation window (usec) */
+	unsigned int hispeed_filter_shift; /* EWMA down-ramp shift (0=off) */
 	bool pl;
 	bool iowait_boost_enable;
 	bool exp_util;
@@ -79,6 +81,16 @@ struct sugov_cpu {
 	unsigned long max;
 	unsigned int flags;
 	unsigned int cpu;
+
+	/* Idle-time accounting for hispeed decisions */
+	u64 prev_idle_time;
+	u64 prev_wall_time;
+	unsigned int busy_pct;
+	unsigned int filtered_busy_pct;
+	bool hispeed_active;
+	u64 hispeed_start_ns;
+	s32 log_hispeed;	  /* hispeed_util in log32fpmax_corr */
+	unsigned int hispeed_idle_windows;
 
 	/* The field below is for single-CPU policies only. */
 #ifdef CONFIG_NO_HZ_COMMON
@@ -707,6 +719,43 @@ static ssize_t hispeed_freq_store(struct gov_attr_set *attr_set,
 	return count;
 }
 
+static ssize_t hispeed_window_us_show(struct gov_attr_set *attr_set, char *buf)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tunables->hispeed_window_us);
+}
+
+static ssize_t hispeed_window_us_store(struct gov_attr_set *attr_set,
+				       const char *buf, size_t count)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+
+	if (kstrtouint(buf, 10, &tunables->hispeed_window_us))
+		return -EINVAL;
+
+	return count;
+}
+
+static ssize_t hispeed_filter_shift_show(struct gov_attr_set *attr_set,
+					 char *buf)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+
+	return scnprintf(buf, PAGE_SIZE, "%u\n", tunables->hispeed_filter_shift);
+}
+
+static ssize_t hispeed_filter_shift_store(struct gov_attr_set *attr_set,
+					  const char *buf, size_t count)
+{
+	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
+
+	if (kstrtouint(buf, 10, &tunables->hispeed_filter_shift))
+		return -EINVAL;
+
+	return count;
+}
+
 static ssize_t pl_show(struct gov_attr_set *attr_set, char *buf)
 {
 	struct sugov_tunables *tunables = to_sugov_tunables(attr_set);
@@ -768,6 +817,9 @@ static struct governor_attr up_rate_limit_us = __ATTR_RW(up_rate_limit_us);
 static struct governor_attr down_rate_limit_us = __ATTR_RW(down_rate_limit_us);
 static struct governor_attr hispeed_load = __ATTR_RW(hispeed_load);
 static struct governor_attr hispeed_freq = __ATTR_RW(hispeed_freq);
+static struct governor_attr hispeed_window_us = __ATTR_RW(hispeed_window_us);
+static struct governor_attr hispeed_filter_shift =
+	__ATTR_RW(hispeed_filter_shift);
 static struct governor_attr pl = __ATTR_RW(pl);
 static struct governor_attr iowait_boost_enable = __ATTR_RW(iowait_boost_enable);
 static struct governor_attr exp_util = __ATTR_RW(exp_util);
@@ -777,6 +829,8 @@ static struct attribute *sugov_attributes[] = {
 	&down_rate_limit_us.attr,
 	&hispeed_load.attr,
 	&hispeed_freq.attr,
+	&hispeed_window_us.attr,
+	&hispeed_filter_shift.attr,
 	&pl.attr,
 	&exp_util.attr,
 	&iowait_boost_enable.attr,
@@ -903,6 +957,8 @@ static void sugov_tunables_save(struct cpufreq_policy *policy,
 	cached->exp_util = tunables->exp_util;
 	cached->hispeed_load = tunables->hispeed_load;
 	cached->hispeed_freq = tunables->hispeed_freq;
+	cached->hispeed_window_us = tunables->hispeed_window_us;
+	cached->hispeed_filter_shift = tunables->hispeed_filter_shift;
 	cached->up_rate_limit_us = tunables->up_rate_limit_us;
 	cached->down_rate_limit_us = tunables->down_rate_limit_us;
 }
@@ -926,6 +982,8 @@ static void sugov_tunables_restore(struct cpufreq_policy *policy)
 	tunables->exp_util = cached->exp_util;
 	tunables->hispeed_load = cached->hispeed_load;
 	tunables->hispeed_freq = cached->hispeed_freq;
+	tunables->hispeed_window_us = cached->hispeed_window_us;
+	tunables->hispeed_filter_shift = cached->hispeed_filter_shift;
 	tunables->up_rate_limit_us = cached->up_rate_limit_us;
 	tunables->down_rate_limit_us = cached->down_rate_limit_us;
 }
@@ -981,6 +1039,8 @@ static int sugov_init(struct cpufreq_policy *policy)
 	tunables->down_rate_limit_us = 0;
 	tunables->hispeed_load = DEFAULT_HISPEED_LOAD;
 	tunables->hispeed_freq = 0;
+	tunables->hispeed_window_us = 4000;
+	tunables->hispeed_filter_shift = 1;
 
 	tunables->iowait_boost_enable = true;
 	tunables->exp_util = true;
