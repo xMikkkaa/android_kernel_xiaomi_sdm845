@@ -313,7 +313,9 @@ static bool hydra_revert_all_threads(bool clear_state, int expected_pid)
 				attr.size = sizeof(attr);
 				attr.sched_util_min = 0;
 				attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
-				sched_setattr(t, &attr);
+				if (sched_setattr(t, &attr))
+					pr_warn_ratelimited("hydra: uclamp reset failed for tid %d\n",
+							    t->pid);
 			}
 #endif
 			err = set_cpus_allowed_ptr(t, &state->original_mask);
@@ -461,7 +463,9 @@ static void hydra_optimize_threads(pid_t pid)
 			attr.size = sizeof(attr);
 			attr.sched_util_min = sched_hydra_uclamp_min;
 			attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
-			sched_setattr(t, &attr);
+			if (sched_setattr(t, &attr))
+				pr_warn_ratelimited("hydra: uclamp set failed for tid %d\n",
+						    t->pid);
 		}
 #endif
 
@@ -485,6 +489,22 @@ static void hydra_optimize_threads(pid_t pid)
 }
 
 /* ======================== Smart worker =================================== */
+
+/*
+ * True when the task's current affinity already equals the target.
+ * Lets the smart worker skip set_cpus_allowed_ptr() no-ops, avoiding
+ * pointless migration and TLB churn every 500ms.
+ */
+static bool hydra_mask_equal(struct task_struct *t, const cpumask_t *target)
+{
+	unsigned long flags;
+	bool equal;
+
+	raw_spin_lock_irqsave(&t->pi_lock, flags);
+	equal = cpumask_equal(&t->cpus_allowed, target);
+	raw_spin_unlock_irqrestore(&t->pi_lock, flags);
+	return equal;
+}
 
 static void hydra_smart_work_fn(struct work_struct *work)
 {
@@ -565,14 +585,18 @@ static void hydra_smart_work_fn(struct work_struct *work)
 				 * Hysteresis: only change cpumask at boundaries.
 				 * Between light_util and heavy_util, thread keeps
 				 * its current state to prevent cpumask thrashing.
+				 * Skip the call entirely when the task is already
+				 * where it should be (no migration/TLB churn).
 				 */
 				if (util > sched_hydra_heavy_util) {
-					if (!cpumask_empty(&allowed_mask))
+					if (!cpumask_empty(&allowed_mask) &&
+					    !hydra_mask_equal(t, &allowed_mask))
 						err = set_cpus_allowed_ptr(t,
 							&allowed_mask);
 				} else if (util < sched_hydra_light_util) {
-					err = set_cpus_allowed_ptr(t,
-						&state->original_mask);
+					if (!hydra_mask_equal(t, &state->original_mask))
+						err = set_cpus_allowed_ptr(t,
+							&state->original_mask);
 				}
 			}
 			if (err)
