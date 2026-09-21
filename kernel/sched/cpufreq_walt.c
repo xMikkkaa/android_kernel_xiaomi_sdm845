@@ -789,7 +789,7 @@ static unsigned long waltgov_get_util(struct waltgov_cpu *wg_cpu)
 #define NL_RATIO 75
 #define DEFAULT_HISPEED_LOAD 90
 #define DEFAULT_CPU0_RTG_BOOST_FREQ 1000000
-#define DEFAULT_CPU4_RTG_BOOST_FREQ 768000
+#define DEFAULT_CPU4_RTG_BOOST_FREQ 1363200
 #if LINUX_VERSION_CODE > KERNEL_VERSION(4, 14, 0)
 #define DEFAULT_CPU7_RTG_BOOST_FREQ 0
 #endif
