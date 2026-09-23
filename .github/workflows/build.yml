@@ -2,9 +2,9 @@ name: Build Kernel
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "staging/dev" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "staging/dev" ]
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,7 @@ jobs:
     - name: Checkout Kernel Source
       uses: actions/checkout@v7
       with:
-        ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
+        ref: ${{ github.event_name == 'schedule' && 'staging/dev' || github.sha }}
         submodules: recursive
         fetch-depth: 0
 
@@ -117,7 +117,7 @@ jobs:
     - name: Checkout Kernel Source
       uses: actions/checkout@v7
       with:
-        ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
+        ref: ${{ github.event_name == 'schedule' && 'staging/dev' || github.sha }}
         submodules: recursive
         fetch-depth: 0
 
@@ -332,7 +332,7 @@ jobs:
     - name: Checkout Kernel Source
       uses: actions/checkout@v7
       with:
-        ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
+        ref: ${{ github.event_name == 'schedule' && 'staging/dev' || github.sha }}
         submodules: recursive
         fetch-depth: 0
 
