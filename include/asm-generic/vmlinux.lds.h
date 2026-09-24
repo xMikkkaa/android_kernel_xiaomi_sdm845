@@ -876,6 +876,57 @@
 
 
 /*
+ * LLVM PGO data sections.
+ * These must be outside .data to avoid nesting output sections.
+ */
+#ifdef CONFIG_PGO_CLANG
+#define PGO_CLANG_DATA						\
+	__llvm_prf_data : AT(ADDR(__llvm_prf_data) - LOAD_OFFSET) { \
+		. = ALIGN(8);					\
+		__llvm_prf_data_start = .;			\
+		KEEP(*(__llvm_prf_data))			\
+		. = ALIGN(8);					\
+		__llvm_prf_data_end = .;			\
+	}							\
+	__llvm_prf_cnts : AT(ADDR(__llvm_prf_cnts) - LOAD_OFFSET) { \
+		. = ALIGN(8);					\
+		__llvm_prf_cnts_start = .;			\
+		KEEP(*(__llvm_prf_cnts))			\
+		. = ALIGN(8);					\
+		__llvm_prf_cnts_end = .;			\
+	}							\
+	__llvm_prf_bits : AT(ADDR(__llvm_prf_bits) - LOAD_OFFSET) { \
+		. = ALIGN(8);					\
+		__llvm_prf_bits_start = .;			\
+		KEEP(*(__llvm_prf_bits))			\
+		. = ALIGN(8);					\
+		__llvm_prf_bits_end = .;			\
+	}							\
+	__llvm_prf_names : AT(ADDR(__llvm_prf_names) - LOAD_OFFSET) { \
+		. = ALIGN(8);					\
+		__llvm_prf_names_start = .;			\
+		KEEP(*(__llvm_prf_names))			\
+		. = ALIGN(8);					\
+		__llvm_prf_names_end = .;			\
+	}							\
+	__llvm_prf_vals : AT(ADDR(__llvm_prf_vals) - LOAD_OFFSET) { \
+		__llvm_prf_vals_start = .;			\
+		KEEP(*(__llvm_prf_vals))			\
+		. = ALIGN(8);					\
+		__llvm_prf_vals_end = .;			\
+	}							\
+	__llvm_prf_vnds : AT(ADDR(__llvm_prf_vnds) - LOAD_OFFSET) { \
+		__llvm_prf_vnds_start = .;			\
+		KEEP(*(__llvm_prf_vnds))			\
+		. = ALIGN(8);					\
+		__llvm_prf_vnds_end = .;			\
+		__llvm_prf_end = .;				\
+	}
+#else
+#define PGO_CLANG_DATA
+#endif
+
+/*
  * Writeable data.
  * All sections are combined in a single .data section.
  * The sections following CONSTRUCTORS are arranged so their
@@ -897,7 +948,8 @@
 		READ_MOSTLY_DATA(cacheline)				\
 		DATA_DATA						\
 		CONSTRUCTORS						\
-	}
+	}								\
+	PGO_CLANG_DATA
 
 #define INIT_TEXT_SECTION(inittext_align)				\
 	. = ALIGN(inittext_align);					\

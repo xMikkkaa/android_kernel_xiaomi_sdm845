@@ -27,8 +27,9 @@ ifneq ($(cc-name),clang)
 CFLAGS_vgettimeofday.o += -mcmodel=tiny
 endif
 
-# Disable gcov profiling for VDSO code
+# Disable gcov and PGO profiling for VDSO code
 GCOV_PROFILE := n
+PGO_PROFILE := n
 KASAN_SANITIZE := n
 UBSAN_SANITIZE := n
 KCOV_INSTRUMENT := n
