@@ -978,7 +978,7 @@ static int debug_wmi_log_size_show(struct seq_file *m, void *v)
 				wmi_##func_base##_buf_info;		\
 		char locbuf[50];					\
 									\
-		if ((!buf) || (count > 50))				\
+		if ((!buf) || (count == 0) || (count > 50))		\
 			return -EFAULT;					\
 									\
 		if (copy_from_user(locbuf, buf, count))			\
@@ -1034,7 +1034,7 @@ static ssize_t debug_wmi_enable_write(struct file *file, const char __user *buf,
 	int k, ret;
 	char locbuf[50];
 
-	if ((!buf) || (count > 50))
+	if ((!buf) || (count == 0) || (count > 50))
 		return -EFAULT;
 
 	if (copy_from_user(locbuf, buf, count))
