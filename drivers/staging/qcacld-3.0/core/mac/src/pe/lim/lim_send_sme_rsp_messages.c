@@ -821,8 +821,7 @@ lim_send_sme_disassoc_ntf(tpAniSirGlobal pMac,
 			MAC_ADDR_ARRAY(peerMacAddr));
 
 		for (i = 0; i < pMac->lim.maxBssId; i++) {
-			if ((&pMac->lim.gpSession[i] != NULL) &&
-					(pMac->lim.gpSession[i].valid) &&
+			if ((pMac->lim.gpSession[i].valid) &&
 					(pMac->lim.gpSession[i].pePersona ==
 								QDF_SAP_MODE)) {
 				/* Find the sta ds entry in another session */
