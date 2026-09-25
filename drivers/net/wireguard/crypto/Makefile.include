@@ -55,3 +55,8 @@ ccflags-$(CONFIG_ZINC_ARCH_ARM64) += -DCONFIG_ZINC_ARCH_ARM64
 ccflags-$(CONFIG_ZINC_ARCH_MIPS) += -DCONFIG_ZINC_ARCH_MIPS
 ccflags-$(CONFIG_ZINC_ARCH_MIPS64) += -DCONFIG_ZINC_ARCH_MIPS64
 ccflags-$(CONFIG_WIREGUARD_DEBUG) += -DCONFIG_ZINC_SELFTEST
+
+# The arm64 nobs arrays are intentionally empty; the analyzer cannot
+# correlate that with the constant loop bound, so silence its report.
+CFLAGS_blake2s.o := -Wno-stringop-overread
+CFLAGS_curve25519.o := -Wno-stringop-overread
