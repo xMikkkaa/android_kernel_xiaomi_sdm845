@@ -10,6 +10,8 @@
 #include <linux/printk.h>
 #include <linux/bug.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overread"
 static inline bool selftest_run(const char *name, bool (*selftest)(void),
 				bool *const nobs[], unsigned int nobs_len)
 {
@@ -44,5 +46,6 @@ static inline bool selftest_run(const char *name, bool (*selftest)(void),
 
 	return !WARN_ON(largest_subset != set);
 }
+#pragma GCC diagnostic pop
 
 #endif
