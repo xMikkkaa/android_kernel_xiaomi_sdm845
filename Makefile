@@ -413,8 +413,9 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -Wno-format-security \
 		   -Wno-unused-function\
 		   -ffast-math -mcpu=cortex-a55 -mtune=cortex-a55 \
-		   -std=gnu89 \
-		   -mllvm -polly \
+		   -std=gnu89
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS   += -mllvm -polly \
 		   -mllvm -polly-run-dce \
 		   -mllvm -polly-run-inliner \
 		   -mllvm -polly-loopfusion-greedy=1 \
@@ -424,6 +425,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -mllvm -polly-vectorizer=stripmine \
 		   -mllvm -polly-detect-keep-going \
 		   -mllvm -polly-invariant-load-hoisting
+endif
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
