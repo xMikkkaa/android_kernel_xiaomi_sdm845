@@ -845,6 +845,7 @@ static __always_inline int fts_read_touchdata(struct fts_ts_data *data)
 	int max_touch_num = data->pdata->max_touch_number;
 	u8 *buf = data->point_buf;
 	struct i2c_client *client = data->client;
+	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
 
 #if FTS_GESTURE_EN
 	if (0 == fts_gesture_readdata(data)) {
@@ -860,8 +861,6 @@ static __always_inline int fts_read_touchdata(struct fts_ts_data *data)
 	if (data->palm_sensor_switch)
 		fts_read_palm_data();
 #endif
-
-	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 

@@ -443,8 +443,9 @@ int ipa_ut_module_init(void);
 void ipa_ut_module_exit(void);
 
 void ipa_register_client_callback(int (*client_cb)(bool is_lock),
-			bool (*teth_port_state)(void), u32 ipa_ep_idx);
+			bool (*teth_port_state)(void),
+			enum ipa_client_type client);
 
-void ipa_deregister_client_callback(u32 ipa_ep_idx);
+void ipa_deregister_client_callback(enum ipa_client_type client);
 
 #endif /* _IPA_COMMON_I_H_ */

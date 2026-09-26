@@ -555,7 +555,6 @@ EXPORT_SYMBOL_GPL(inet_unhash);
  * of kernel memory.
  */
 #define INET_TABLE_PERTURB_SIZE (1 << CONFIG_INET_TABLE_PERTURB_ORDER)
-static u32 *table_perturb;
 
 int __inet_hash_connect(struct inet_timewait_death_row *death_row,
 		struct sock *sk, u32 port_offset,

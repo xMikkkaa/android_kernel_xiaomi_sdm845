@@ -2887,7 +2887,9 @@ static void bypass_charge_sysfs_init(struct smb_charger *chg)
 	global_smb_chg = chg;
 	bypass_charge_kobj = kobject_create_and_add("bypass_charge", kernel_kobj);
 	if (bypass_charge_kobj) {
-		sysfs_create_group(bypass_charge_kobj, &bypass_charge_attr_group);
+		if (sysfs_create_group(bypass_charge_kobj,
+				       &bypass_charge_attr_group))
+			pr_err("failed to create bypass_charge sysfs group\n");
 	}
 }
 

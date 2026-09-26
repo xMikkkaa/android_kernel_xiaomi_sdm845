@@ -47,6 +47,7 @@ enum {LAST_NORM, LAST_ROOT, LAST_DOT, LAST_DOTDOT, LAST_BIND};
 
 extern int path_pts(struct path *path);
 
+struct filename;
 extern int filename_lookup(int dfd, struct filename *name, unsigned flags, struct path *path, struct path *root);
 extern int user_path_at_empty(int, const char __user *, unsigned, struct path *, int *empty);
 

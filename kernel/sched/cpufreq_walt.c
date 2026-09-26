@@ -1571,7 +1571,7 @@ __ATTR(_name, 0644, show_##_name, store_##_name)			\
 static ssize_t show_##name(struct gov_attr_set *attr_set, char *buf)	\
 {									\
 	struct waltgov_tunables *tunables = to_waltgov_tunables(attr_set);	\
-	return scnprintf(buf, PAGE_SIZE, "%lu\n", tunables->name);	\
+ 	return scnprintf(buf, PAGE_SIZE, "%u\n", tunables->name);	\
 }									\
 
 #define store_attr(name)						\

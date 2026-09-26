@@ -151,10 +151,11 @@ void restart_burst_bore(struct task_struct *p) {
 void restart_burst_rescale_deadline_bore(struct task_struct *p) {
 	struct sched_entity *se = &p->se;
 	s64 vscaled, vremain = se->deadline - se->vruntime;
+	u8 old_prio, new_prio;
 
-	u8 old_prio = effective_prio_bore(p);
+	old_prio = effective_prio_bore(p);
 	restart_burst_bore(p);
-	u8 new_prio = effective_prio_bore(p);
+	new_prio = effective_prio_bore(p);
 
 	if (old_prio > new_prio) {
 		vscaled = rescale_slice(abs(vremain), old_prio, new_prio);
