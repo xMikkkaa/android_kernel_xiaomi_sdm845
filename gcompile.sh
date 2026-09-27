@@ -60,7 +60,7 @@ JOBS="$(nproc --all)"
 
 # Kernel name from defconfig LOCALVERSION
 OC_VAL="805"
-KERNEL_NAME="Chimera-V5-Rc2"
+KERNEL_NAME="Chimera-V5"
 
 # Build variant (default or nse)
 VARIANT="default"
@@ -140,8 +140,8 @@ run_release_builds() {
         local -a release_args=()
         read -r -a release_args <<< "${release_command}"
 
-        log_info "Running: ${KERNEL_DIR}/compile.sh ${release_args[*]}"
-        "${KERNEL_DIR}/compile.sh" "${release_args[@]}"
+        log_info "Running: $0 ${release_args[*]}"
+        "$0" "${release_args[@]}"
     done
 
     log_success "Release build sequence completed"
