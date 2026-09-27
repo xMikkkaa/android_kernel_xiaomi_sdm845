@@ -141,7 +141,7 @@ static struct bio *blk_bio_segment_split(struct request_queue *q,
 		}
 
 		if (bvprvp && blk_queue_cluster(q)) {
-			if (seg_size + bv.bv_len > queue_max_segment_size(q))
+			if (bv.bv_len > queue_max_segment_size(q) - seg_size)
 				goto new_segment;
 			if (!BIOVEC_PHYS_MERGEABLE(bvprvp, &bv))
 				goto new_segment;
@@ -261,8 +261,8 @@ static unsigned int __blk_recalc_rq_segments(struct request_queue *q,
 				goto new_segment;
 
 			if (prev && cluster) {
-				if (seg_size + bv.bv_len
-				    > queue_max_segment_size(q))
+				if (bv.bv_len >
+				    queue_max_segment_size(q) - seg_size)
 					goto new_segment;
 				if (!BIOVEC_PHYS_MERGEABLE(&bvprv, &bv))
 					goto new_segment;
@@ -330,8 +330,8 @@ static int blk_phys_contig_segment(struct request_queue *q, struct bio *bio,
 	if (!blk_queue_cluster(q))
 		return 0;
 
-	if (bio->bi_seg_back_size + nxt->bi_seg_front_size >
-	    queue_max_segment_size(q))
+	if (nxt->bi_seg_front_size >
+	    queue_max_segment_size(q) - bio->bi_seg_back_size)
 		return 0;
 
 	if (!bio_has_data(bio))
@@ -362,7 +362,7 @@ __blk_segment_map_sg(struct request_queue *q, struct bio_vec *bvec,
 	int nbytes = bvec->bv_len;
 
 	if (*sg && *cluster) {
-		if ((*sg)->length + nbytes > queue_max_segment_size(q))
+		if (nbytes > queue_max_segment_size(q) - (*sg)->length)
 			goto new_segment;
 
 		if (!BIOVEC_PHYS_MERGEABLE(bvprv, bvec))

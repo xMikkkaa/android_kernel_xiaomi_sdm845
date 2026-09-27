@@ -387,6 +387,9 @@
 		qcom,mdss-inline-rot-danger-lut = <0x0055aaff 0x0000ffff>;
 		qcom,mdss-inline-rot-safe-lut = <0x0000f000 0x0000ff00>;
 
+		qcom,mdss-rot-qos-cpu-mask = <0xf>;
+		qcom,mdss-rot-qos-cpu-dma-latency = <75>;
+
 		qcom,mdss-default-ot-rd-limit = <32>;
 		qcom,mdss-default-ot-wr-limit = <32>;
 
@@ -447,7 +450,7 @@
 				qcom,supply-min-voltage = <1200000>;
 				qcom,supply-max-voltage = <1200000>;
 				qcom,supply-enable-load = <21800>;
-				qcom,supply-disable-load = <4>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 	};
@@ -481,7 +484,7 @@
 				qcom,supply-min-voltage = <1200000>;
 				qcom,supply-max-voltage = <1200000>;
 				qcom,supply-enable-load = <21800>;
-				qcom,supply-disable-load = <4>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 	};
@@ -505,6 +508,8 @@
 						00 00 00 00
 						00 00 00 80];
 		qcom,platform-regulator-settings = [1d 1d 1d 1d 1d];
+		qcom,panel-allow-phy-poweroff;
+		qcom,dsi-phy-regulator-min-datarate-bps = <1200000000>;
 		qcom,phy-supply-entries {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -514,7 +519,7 @@
 				qcom,supply-min-voltage = <880000>;
 				qcom,supply-max-voltage = <880000>;
 				qcom,supply-enable-load = <36000>;
-				qcom,supply-disable-load = <32>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 	};
@@ -538,6 +543,8 @@
 						00 00 00 00
 						00 00 00 00
 						00 00 00 80];
+		qcom,panel-allow-phy-poweroff;
+		qcom,dsi-phy-regulator-min-datarate-bps = <1200000000>;
 		qcom,phy-supply-entries {
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -547,7 +554,7 @@
 				qcom,supply-min-voltage = <880000>;
 				qcom,supply-max-voltage = <880000>;
 				qcom,supply-enable-load = <36000>;
-				qcom,supply-disable-load = <32>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 	};
@@ -621,7 +628,7 @@
 				qcom,supply-min-voltage = <1200000>;
 				qcom,supply-max-voltage = <1200000>;
 				qcom,supply-enable-load = <21800>;
-				qcom,supply-disable-load = <4>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 
@@ -635,7 +642,7 @@
 				qcom,supply-min-voltage = <880000>;
 				qcom,supply-max-voltage = <880000>;
 				qcom,supply-enable-load = <36000>;
-				qcom,supply-disable-load = <32>;
+				qcom,supply-disable-load = <0>;
 			};
 		};
 	};

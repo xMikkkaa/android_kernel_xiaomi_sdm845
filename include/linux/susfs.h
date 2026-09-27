@@ -9,7 +9,7 @@
 #include <linux/susfs_def.h>
 #include <linux/statfs.h>
 
-#define SUSFS_VERSION "v2.2.0"
+#define SUSFS_VERSION "v2.3.0"
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
 #define SUSFS_VARIANT "NON-GKI"
 #else
@@ -83,7 +83,7 @@ struct st_susfs_mount_source_spoof_list {
 #define KSTAT_SPOOF_ATIME_TV_NSEC (1 << 5)
 #define KSTAT_SPOOF_MTIME_TV_SEC (1 << 6)
 #define KSTAT_SPOOF_MTIME_TV_NSEC (1 << 7)
-#define KSTAT_SPOOF_CTIME_TV_SEC (1 < 8)
+#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)
 #define KSTAT_SPOOF_CTIME_TV_NSEC (1 << 9)
 #define KSTAT_SPOOF_BLOCKS (1 << 10)
 #define KSTAT_SPOOF_BLKSIZE (1 << 11)
@@ -109,11 +109,13 @@ struct st_susfs_sus_kstat {
 };
 
 struct st_susfs_sus_kstat_hlist {
+	struct hlist_node                       node;
 	unsigned long                           target_ino;
 	unsigned long                           target_dev;
+	struct kstatfs                          spoofed_kstatfs;
+	int                                     spoofed_mnt_id;
 	bool                                    is_fuse;
 	struct st_susfs_sus_kstat               info;
-	struct hlist_node                       node;
 };
 #endif
 
@@ -152,6 +154,7 @@ struct st_susfs_open_redirect {
 };
 
 struct st_susfs_open_redirect_hlist {
+	struct hlist_node                       node;
 	unsigned long                           target_ino;
 	unsigned long                           target_dev;
 	unsigned long                           redirected_ino;
@@ -160,7 +163,6 @@ struct st_susfs_open_redirect_hlist {
 	struct kstatfs                          spoofed_kstatfs;
 	struct st_susfs_open_redirect           info;
 	bool                                    reversed_lookup_only;
-	struct hlist_node                       node;
 };
 #endif
 
@@ -211,6 +213,7 @@ void susfs_add_mount_source_spoof(void __user **user_info);
 void susfs_del_mount_source_spoof(void __user **user_info);
 bool susfs_get_spoofed_mount_source(const char *devname, const char *mountpoint,
 					char *out_buf, size_t out_buf_size);
+bool susfs_should_check_mount_spoof(const char *devname);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #ifdef CONFIG_KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
 void susfs_auto_mount_source_spoof_init(void);
@@ -258,6 +261,6 @@ void susfs_show_version(void __user **user_info);
 void susfs_start_sdcard_monitor_fn(void);
 
 /* susfs_init */
-void susfs_init(void);
+void __init susfs_init(void);
 
 #endif

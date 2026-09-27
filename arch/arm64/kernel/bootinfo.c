@@ -84,7 +84,6 @@ static const char * const reset_reasons[RS_REASON_MAX] = {
 };
 
 static struct kobject *bootinfo_kobj;
-static powerup_reason_t powerup_reason;
 
 #define bootinfo_attr(_name) \
 static struct kobj_attribute _name##_attr = {	\

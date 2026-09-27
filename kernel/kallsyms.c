@@ -652,25 +652,56 @@ static int s_show(struct seq_file *m, void *p)
 			   iter->type, iter->name);
 #else
 	{
-		if (susfs_starts_with(iter->name, "ksu_") ||
-			susfs_starts_with(iter->name, "__ksu_") ||
-			susfs_starts_with(iter->name, "susfs_") ||
-			susfs_starts_with(iter->name, "ksud") ||
-			susfs_starts_with(iter->name, "is_ksu_") ||
-			susfs_starts_with(iter->name, "is_manager_") ||
-			susfs_starts_with(iter->name, "escape_to_") ||
-			susfs_starts_with(iter->name, "setup_selinux") ||
-			susfs_starts_with(iter->name, "track_throne") ||
-			susfs_starts_with(iter->name, "on_post_fs_data") ||
-			susfs_starts_with(iter->name, "try_umount") ||
-			susfs_starts_with(iter->name, "kernelsu") ||
-			susfs_starts_with(iter->name, "__initcall__kmod_kernelsu") ||
-			susfs_starts_with(iter->name, "apply_kernelsu") ||
-			susfs_starts_with(iter->name, "handle_sepolicy") ||
-			susfs_starts_with(iter->name, "getenforce") ||
-			susfs_starts_with(iter->name, "setenforce") ||
-			susfs_starts_with(iter->name, "is_zygote"))
-		{
+		/* First-char dispatch: skip the prefix chain for the vast
+		 * majority of symbols that cannot match any of them. */
+		const char *sym_name = iter->name;
+		bool hide_symbol = false;
+
+		if (likely(sym_name)) {
+			switch (sym_name[0]) {
+			case 'k':
+				hide_symbol = susfs_starts_with(sym_name, "ksu_") ||
+					susfs_starts_with(sym_name, "ksud") ||
+					susfs_starts_with(sym_name, "kernelsu");
+				break;
+			case '_':
+				hide_symbol = susfs_starts_with(sym_name, "__ksu_") ||
+					susfs_starts_with(sym_name, "__initcall__kmod_kernelsu");
+				break;
+			case 's':
+				hide_symbol = susfs_starts_with(sym_name, "susfs_") ||
+					susfs_starts_with(sym_name, "setup_selinux") ||
+					susfs_starts_with(sym_name, "setenforce");
+				break;
+			case 'i':
+				hide_symbol = susfs_starts_with(sym_name, "is_ksu_") ||
+					susfs_starts_with(sym_name, "is_manager_") ||
+					susfs_starts_with(sym_name, "is_zygote");
+				break;
+			case 'e':
+				hide_symbol = susfs_starts_with(sym_name, "escape_to_");
+				break;
+			case 't':
+				hide_symbol = susfs_starts_with(sym_name, "track_throne") ||
+					susfs_starts_with(sym_name, "try_umount");
+				break;
+			case 'o':
+				hide_symbol = susfs_starts_with(sym_name, "on_post_fs_data");
+				break;
+			case 'a':
+				hide_symbol = susfs_starts_with(sym_name, "apply_kernelsu");
+				break;
+			case 'h':
+				hide_symbol = susfs_starts_with(sym_name, "handle_sepolicy");
+				break;
+			case 'g':
+				hide_symbol = susfs_starts_with(sym_name, "getenforce");
+				break;
+			default:
+				break;
+			}
+		}
+		if (unlikely(hide_symbol)) {
 			return 0;
 		}
 		seq_printf(m, "%pK %c %s\n", (void *)iter->value,

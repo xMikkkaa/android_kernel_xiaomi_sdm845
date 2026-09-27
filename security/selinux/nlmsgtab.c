@@ -206,9 +206,23 @@ static void nlmsg_set_getlink_perm(u32 perm)
 	}
 }
 
+static void nlmsg_set_getneigh_perm(u32 perm)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(nlmsg_route_perms); i++) {
+		if (nlmsg_route_perms[i].nlmsg_type == RTM_GETNEIGH ||
+		    nlmsg_route_perms[i].nlmsg_type == RTM_GETNEIGHTBL) {
+			nlmsg_route_perms[i].perm = perm;
+		}
+	}
+}
+
 /**
  * Use nlmsg_readpriv as the permission for RTM_GETLINK messages if the
  * netlink_route_getlink policy capability is set. Otherwise use nlmsg_read.
+ * Similarly, use nlmsg_getneigh for RTM_GETNEIGH and RTM_GETNEIGHTBL if the
+ * netlink_route_getneigh policy capability is set.
  */
 void selinux_nlmsg_init(void)
 {
@@ -216,4 +230,8 @@ void selinux_nlmsg_init(void)
 		nlmsg_set_getlink_perm(NETLINK_ROUTE_SOCKET__NLMSG_READPRIV);
 	else
 		nlmsg_set_getlink_perm(NETLINK_ROUTE_SOCKET__NLMSG_READ);
+
+	if (selinux_android_netlink_getneigh) {
+		nlmsg_set_getneigh_perm(NETLINK_ROUTE_SOCKET__NLMSG_GETNEIGH);
+	}
 }

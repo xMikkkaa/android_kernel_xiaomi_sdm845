@@ -1820,7 +1820,7 @@ static inline int remap_pud_range(struct mm_struct *mm, pgd_t *pgd,
 /**
  * remap_pfn_range - remap kernel memory to userspace
  * @vma: user vma to map to
- * @addr: target user address to start at
+ * @addr: target page aligned user address to start at
  * @pfn: physical address of kernel memory
  * @size: size of map area
  * @prot: page protection flags for this mapping
@@ -1836,6 +1836,9 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	struct mm_struct *mm = vma->vm_mm;
 	unsigned long remap_pfn = pfn;
 	int err;
+
+	if (WARN_ON_ONCE(!PAGE_ALIGNED(addr)))
+		return -EINVAL;
 
 	/*
 	 * Physically remapped pages are special. Tell the
@@ -2713,8 +2716,8 @@ void unmap_mapping_range(struct address_space *mapping,
 		loff_t const holebegin, loff_t const holelen, int even_cows)
 {
 	struct zap_details details = { };
-	pgoff_t hba = holebegin >> PAGE_SHIFT;
-	pgoff_t hlen = (holelen + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	pgoff_t hba = (pgoff_t)(holebegin) >> PAGE_SHIFT;
+	pgoff_t hlen = ((pgoff_t)(holelen) + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
 	/* Check for overflow. */
 	if (sizeof(holelen) > sizeof(hlen)) {
@@ -4413,6 +4416,10 @@ int follow_phys(struct vm_area_struct *vma,
 	if (follow_pte(vma->vm_mm, address, &ptep, &ptl))
 		goto out;
 	pte = *ptep;
+
+	/* Never return PFNs of anon folios in COW mappings. */
+	if (vm_normal_page(vma, address, pte))
+		goto unlock;
 
 	if ((flags & FOLL_WRITE) && !pte_write(pte))
 		goto unlock;

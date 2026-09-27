@@ -31,7 +31,7 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #if defined(CONFIG_UCLAMP_TASK)
-#include <uapi/linux/sched/types.h>
+#include <uapi/linux/sched.h>
 #endif
 #include <trace/events/sched.h>
 #include "sched.h"
@@ -70,9 +70,16 @@ static DEFINE_MUTEX(hydra_topo_mutex);
 
 static struct workqueue_struct *hydra_wq;
 
-static struct work_struct hydra_fork_work;
+static struct delayed_work hydra_fork_work;
 static struct work_struct hydra_exit_work;
 static atomic_t hydra_exit_pid = ATOMIC_INIT(0);
+
+/*
+ * Fork bursts (game launch spawns dozens of threads) are coalesced:
+ * each fork only re-arms a 150ms timer, so a burst collapses into a
+ * single optimize pass instead of one full scan per thread.
+ */
+#define HYDRA_FORK_DEBOUNCE_MS	150
 
 static struct delayed_work hydra_smart_dwork;
 static bool hydra_smart_running;
@@ -209,12 +216,45 @@ static void hydra_detect_clusters(void)
 
 /* ======================== Thread matching ================================ */
 
-static bool hydra_match_thread(struct task_struct *t)
+#define HYDRA_MAX_PATTERNS	16
+
+/*
+ * Parse the dynamic pattern list once per optimize pass into a stack
+ * array. Returns the number of usable patterns (0 = none configured).
+ * Callers must hold hydra_mutex or otherwise guarantee the sysctl
+ * string is stable; the kstrdup snapshot keeps matching consistent
+ * even if userspace rewrites the patterns mid-pass.
+ */
+static int hydra_parse_patterns(char pat[][TASK_COMM_LEN + 1])
+{
+	char *patterns, *token, *rest;
+	int count = 0;
+
+	if (strlen(sched_hydra_thread_patterns) == 0)
+		return 0;
+
+	patterns = kstrdup(sched_hydra_thread_patterns, GFP_KERNEL);
+	if (!patterns)
+		return 0;
+
+	rest = patterns;
+	while (count < HYDRA_MAX_PATTERNS &&
+	       (token = strsep(&rest, ",")) != NULL) {
+		token = strim(token);
+		if (strlen(token) > 0) {
+			strscpy(pat[count], token,
+				TASK_COMM_LEN + 1);
+			count++;
+		}
+	}
+	kfree(patterns);
+	return count;
+}
+
+static bool hydra_match_thread(struct task_struct *t,
+			       char pat[][TASK_COMM_LEN + 1], int pat_count)
 {
 	int i;
-	char *patterns;
-	char *token, *rest;
-	bool matched = false;
 
 	/* 1. Check static patterns first */
 	for (i = 0; i < ARRAY_SIZE(hydra_comm_patterns); i++) {
@@ -222,24 +262,13 @@ static bool hydra_match_thread(struct task_struct *t)
 			return true;
 	}
 
-	/* 2. Check dynamic patterns if configured */
-	if (strlen(sched_hydra_thread_patterns) == 0)
-		return false;
-
-	patterns = kstrdup(sched_hydra_thread_patterns, GFP_KERNEL);
-	if (!patterns)
-		return false;
-
-	rest = patterns;
-	while ((token = strsep(&rest, ",")) != NULL) {
-		token = strim(token);
-		if (strlen(token) > 0 && strnstr(t->comm, token, TASK_COMM_LEN)) {
-			matched = true;
-			break;
-		}
+	/* 2. Check pre-parsed dynamic patterns */
+	for (i = 0; i < pat_count; i++) {
+		if (strnstr(t->comm, pat[i], TASK_COMM_LEN))
+			return true;
 	}
-	kfree(patterns);
-	return matched;
+
+	return false;
 }
 
 /* ======================== Revert logic =================================== */
@@ -284,7 +313,9 @@ static bool hydra_revert_all_threads(bool clear_state, int expected_pid)
 				attr.size = sizeof(attr);
 				attr.sched_util_min = 0;
 				attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
-				sched_setattr(t, &attr);
+				if (sched_setattr(t, &attr))
+					pr_warn_ratelimited("hydra: uclamp reset failed for tid %d\n",
+							    t->pid);
 			}
 #endif
 			err = set_cpus_allowed_ptr(t, &state->original_mask);
@@ -311,11 +342,16 @@ static void hydra_optimize_threads(pid_t pid)
 	int i, start, effective_depth;
 	cpumask_t allowed_mask;
 	bool has_big_cores;
+	char pat[HYDRA_MAX_PATTERNS][TASK_COMM_LEN + 1];
+	int pat_count;
 
 	if (pid <= 0)
 		return;
 
 	hydra_detect_clusters();
+
+	/* Parse dynamic patterns once; reused for every thread below */
+	pat_count = hydra_parse_patterns(pat);
 
 	mutex_lock(&hydra_topo_mutex);
 	cpumask_clear(&allowed_mask);
@@ -346,7 +382,7 @@ static void hydra_optimize_threads(pid_t pid)
 	mutex_lock(&hydra_mutex);
 	read_lock(&tasklist_lock);
 	for_each_thread(p, t) {
-		if (hydra_match_thread(t)) {
+		if (hydra_match_thread(t, pat, pat_count)) {
 			if (target_count < HYDRA_MAX_TRACKED_THREADS) {
 				get_task_struct(t);
 				hydra_target_buffer[target_count++] = t;
@@ -427,7 +463,9 @@ static void hydra_optimize_threads(pid_t pid)
 			attr.size = sizeof(attr);
 			attr.sched_util_min = sched_hydra_uclamp_min;
 			attr.sched_flags = SCHED_FLAG_UTIL_CLAMP_MIN;
-			sched_setattr(t, &attr);
+			if (sched_setattr(t, &attr))
+				pr_warn_ratelimited("hydra: uclamp set failed for tid %d\n",
+						    t->pid);
 		}
 #endif
 
@@ -451,6 +489,22 @@ static void hydra_optimize_threads(pid_t pid)
 }
 
 /* ======================== Smart worker =================================== */
+
+/*
+ * True when the task's current affinity already equals the target.
+ * Lets the smart worker skip set_cpus_allowed_ptr() no-ops, avoiding
+ * pointless migration and TLB churn every 500ms.
+ */
+static bool hydra_mask_equal(struct task_struct *t, const cpumask_t *target)
+{
+	unsigned long flags;
+	bool equal;
+
+	raw_spin_lock_irqsave(&t->pi_lock, flags);
+	equal = cpumask_equal(&t->cpus_allowed, target);
+	raw_spin_unlock_irqrestore(&t->pi_lock, flags);
+	return equal;
+}
 
 static void hydra_smart_work_fn(struct work_struct *work)
 {
@@ -531,14 +585,18 @@ static void hydra_smart_work_fn(struct work_struct *work)
 				 * Hysteresis: only change cpumask at boundaries.
 				 * Between light_util and heavy_util, thread keeps
 				 * its current state to prevent cpumask thrashing.
+				 * Skip the call entirely when the task is already
+				 * where it should be (no migration/TLB churn).
 				 */
 				if (util > sched_hydra_heavy_util) {
-					if (!cpumask_empty(&allowed_mask))
+					if (!cpumask_empty(&allowed_mask) &&
+					    !hydra_mask_equal(t, &allowed_mask))
 						err = set_cpus_allowed_ptr(t,
 							&allowed_mask);
 				} else if (util < sched_hydra_light_util) {
-					err = set_cpus_allowed_ptr(t,
-						&state->original_mask);
+					if (!hydra_mask_equal(t, &state->original_mask))
+						err = set_cpus_allowed_ptr(t,
+							&state->original_mask);
 				}
 			}
 			if (err)
@@ -563,6 +621,22 @@ static void hydra_fork_work_fn(struct work_struct *work)
 
 	if (pid > 0 && static_branch_likely(&sched_hydra_enable_key))
 		hydra_optimize_threads(pid);
+}
+
+/*
+ * Coalesce fork bursts: re-arm a short timer instead of queueing a
+ * full optimize pass per forked thread.
+ */
+static void hydra_kick_fork_work(void)
+{
+	if (hydra_wq) {
+		cancel_delayed_work(&hydra_fork_work);
+		queue_delayed_work(hydra_wq, &hydra_fork_work,
+				   msecs_to_jiffies(HYDRA_FORK_DEBOUNCE_MS));
+	} else {
+		schedule_delayed_work(&hydra_fork_work,
+				      msecs_to_jiffies(HYDRA_FORK_DEBOUNCE_MS));
+	}
 }
 
 static void hydra_exit_work_fn(struct work_struct *work)
@@ -590,7 +664,7 @@ static int hydra_cpu_hotplug_callback(unsigned int cpu)
 {
 	int pid = READ_ONCE(sched_hydra_pid);
 	if (pid > 0 && static_branch_likely(&sched_hydra_enable_key))
-		hydra_queue_work(&hydra_fork_work); /* Re-evaluates cpumask */
+		hydra_kick_fork_work();
 	return 0;
 }
 
@@ -610,7 +684,7 @@ static void probe_sched_process_fork(void *ignore,
 	int pid = READ_ONCE(sched_hydra_pid);
 
 	if (pid > 0 && parent->tgid == pid)
-		hydra_queue_work(&hydra_fork_work);
+		hydra_kick_fork_work();
 }
 
 static void probe_sched_process_exit(void *ignore, struct task_struct *p)
@@ -1045,7 +1119,7 @@ static int __init sched_init_hydra(void)
 				  hydra_cpu_hotplug_callback,
 				  hydra_cpu_hotplug_callback);
 
-	INIT_WORK(&hydra_fork_work, hydra_fork_work_fn);
+	INIT_DELAYED_WORK(&hydra_fork_work, hydra_fork_work_fn);
 	INIT_WORK(&hydra_exit_work, hydra_exit_work_fn);
 	INIT_DELAYED_WORK(&hydra_smart_dwork, hydra_smart_work_fn);
 

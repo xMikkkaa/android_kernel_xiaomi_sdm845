@@ -200,11 +200,6 @@ static void av_dev_drift_afe_cb_handler(uint32_t *payload,
 	struct afe_av_dev_drift_get_param_resp *resp =
 		(struct afe_av_dev_drift_get_param_resp *) payload;
 
-	if (!(&(resp->pdata))) {
-		pr_err("%s: Error: resp pdata is NULL\n", __func__);
-		return;
-	}
-
 	param_id = resp->pdata.param_id;
 	if (param_id == AFE_PARAM_ID_DEV_TIMING_STATS) {
 		if (payload_size < sizeof(this_afe.av_dev_drift_resp)) {
@@ -230,11 +225,6 @@ static int32_t sp_make_afe_callback(uint32_t *payload, uint32_t payload_size)
 	u32 param_id;
 	struct afe_spkr_prot_calib_get_resp *resp =
 		(struct afe_spkr_prot_calib_get_resp *) payload;
-
-	if (!(&(resp->pdata))) {
-		pr_err("%s: Error: resp pdata is NULL\n", __func__);
-		return -EINVAL;
-	}
 
 	param_id = resp->pdata.param_id;
 	if (param_id == AFE_PARAM_ID_CALIB_RES_CFG_V2) {

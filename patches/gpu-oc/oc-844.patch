@@ -1,0 +1,137 @@
+--- a/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
++++ b/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi
+@@ -548,7 +548,7 @@
+ &msm_gpu {
+ 	/* Updated chip ID */
+ 	qcom,chipid = <0x06030001>;
+-	qcom,initial-pwrlevel = <6>;
++	qcom,initial-pwrlevel = <8>;
+ 
+ 	qcom,gpu-pwrlevels {
+ 		#address-cells = <1>;
+@@ -558,7 +558,7 @@
+ 
+ 		qcom,gpu-pwrlevel@0 {
+ 			reg = <0>;
+-			qcom,gpu-freq = <805000000>;
++			qcom,gpu-freq = <844000000>;
+ 			qcom,bus-freq = <12>;
+ 			qcom,bus-min = <12>;
+ 			qcom,bus-max = <12>;
+@@ -566,62 +566,78 @@
+ 
+ 		qcom,gpu-pwrlevel@1 {
+ 			reg = <1>;
++			qcom,gpu-freq = <820000000>;
++			qcom,bus-freq = <12>;
++			qcom,bus-min = <12>;
++			qcom,bus-max = <12>;
++		};
++
++		qcom,gpu-pwrlevel@2 {
++			reg = <2>;
++			qcom,gpu-freq = <787000000>;
++			qcom,bus-freq = <12>;
++			qcom,bus-min = <12>;
++			qcom,bus-max = <12>;
++		};
++
++		qcom,gpu-pwrlevel@3 {
++			reg = <3>;
+ 			qcom,gpu-freq = <710000000>;
+ 			qcom,bus-freq = <11>;
+ 			qcom,bus-min = <10>;
+ 			qcom,bus-max = <12>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@2 {
+-			reg = <2>;
++		qcom,gpu-pwrlevel@4 {
++			reg = <4>;
+ 			qcom,gpu-freq = <596000000>;
+ 			qcom,bus-freq = <8>;
+ 			qcom,bus-min = <7>;
+ 			qcom,bus-max = <9>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@3 {
+-			reg = <3>;
++		qcom,gpu-pwrlevel@5 {
++			reg = <5>;
+ 			qcom,gpu-freq = <520000000>;
+ 			qcom,bus-freq = <7>;
+ 			qcom,bus-min = <6>;
+ 			qcom,bus-max = <9>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@4 {
+-			reg = <4>;
++		qcom,gpu-pwrlevel@6 {
++			reg = <6>;
+ 			qcom,gpu-freq = <414000000>;
+ 			qcom,bus-freq = <6>;
+ 			qcom,bus-min = <5>;
+ 			qcom,bus-max = <8>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@5 {
+-			reg = <5>;
++		qcom,gpu-pwrlevel@7 {
++			reg = <7>;
+ 			qcom,gpu-freq = <342000000>;
+ 			qcom,bus-freq = <6>;
+ 			qcom,bus-min = <5>;
+ 			qcom,bus-max = <7>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@6 {
+-			reg = <6>;
++		qcom,gpu-pwrlevel@8 {
++			reg = <8>;
+ 			qcom,gpu-freq = <257000000>;
+ 			qcom,bus-freq = <4>;
+ 			qcom,bus-min = <3>;
+ 			qcom,bus-max = <5>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@7 {
+-			reg = <7>;
++		qcom,gpu-pwrlevel@9 {
++			reg = <9>;
+ 			qcom,gpu-freq = <144000000>;
+ 			qcom,bus-freq = <2>;
+ 			qcom,bus-min = <1>;
+ 			qcom,bus-max = <3>;
+ 		};
+ 
+-		qcom,gpu-pwrlevel@8 {
+-			reg = <8>;
++		qcom,gpu-pwrlevel@10 {
++			reg = <10>;
+ 			qcom,gpu-freq = <0>;
+ 			qcom,bus-freq = <0>;
+ 			qcom,bus-min = <0>;
+--- a/drivers/clk/qcom/gpucc-sdm845.c
++++ b/drivers/clk/qcom/gpucc-sdm845.c
+@@ -281,7 +281,9 @@
+ 	F(520000000, P_CRC_DIV,  1, 0, 0),
+ 	F(596000000, P_CRC_DIV,  1, 0, 0),
+ 	F(710000000, P_CRC_DIV,  1, 0, 0),
+-	F(805000000, P_CRC_DIV,  1, 0, 0),
++	F(787000000, P_CRC_DIV,  1, 0, 0),
++	F(820000000, P_CRC_DIV,  1, 0, 0),
++	F(844000000, P_CRC_DIV,  1, 0, 0),
+ 	{ }
+ };
+ 
+@@ -632,8 +634,8 @@
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_LOW] = 414000000;
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_LOW_L1] = 520000000;
+ 	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_NOMINAL] = 596000000;
+-	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH] = 710000000;
+-	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH_L1] = 805000000;
++	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH] = 820000000;
++	gpu_cc_gx_gfx3d_clk_src.clkr.hw.init->rate_max[VDD_GX_HIGH_L1] = 844000000;
+ }
+ 
+ static void gpu_cc_gfx_sdm845_fixup_sdm670(void)

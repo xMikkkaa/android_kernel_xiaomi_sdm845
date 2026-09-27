@@ -789,7 +789,7 @@ static unsigned long waltgov_get_util(struct waltgov_cpu *wg_cpu)
 #define NL_RATIO 75
 #define DEFAULT_HISPEED_LOAD 90
 #define DEFAULT_CPU0_RTG_BOOST_FREQ 1000000
-#define DEFAULT_CPU4_RTG_BOOST_FREQ 768000
+#define DEFAULT_CPU4_RTG_BOOST_FREQ 1363200
 #if LINUX_VERSION_CODE > KERNEL_VERSION(4, 14, 0)
 #define DEFAULT_CPU7_RTG_BOOST_FREQ 0
 #endif
@@ -1571,7 +1571,7 @@ __ATTR(_name, 0644, show_##_name, store_##_name)			\
 static ssize_t show_##name(struct gov_attr_set *attr_set, char *buf)	\
 {									\
 	struct waltgov_tunables *tunables = to_waltgov_tunables(attr_set);	\
-	return scnprintf(buf, PAGE_SIZE, "%lu\n", tunables->name);	\
+ 	return scnprintf(buf, PAGE_SIZE, "%u\n", tunables->name);	\
 }									\
 
 #define store_attr(name)						\

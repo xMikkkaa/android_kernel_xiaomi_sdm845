@@ -1,0 +1,39 @@
+--- a/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi
+@@ -53,3 +53,36 @@
+ &blue_led {
+ 	status = "disabled";
+ };
++
++/* Default Fstab appended by compile.sh */
++&firmware {
++	android {
++		fstab {
++			compatible = "android,fstab";
++			system {
++				compatible = "android,system";
++				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/system";
++				type = "ext4";
++				mnt_flags = "ro,barrier=1,discard";
++				fsmgr_flags = "wait";
++				status = "ok";
++			};
++			system_ext {
++				compatible = "android,system_ext";
++				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/cust";
++				type = "ext4";
++				mnt_flags = "ro,barrier=1,discard";
++				fsmgr_flags = "wait";
++				status = "ok";
++			};
++			vendor {
++				compatible = "android,vendor";
++				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
++				type = "ext4";
++				mnt_flags = "ro,barrier=1,discard";
++				fsmgr_flags = "wait";
++				status = "ok";
++			};
++		};
++	};
++};

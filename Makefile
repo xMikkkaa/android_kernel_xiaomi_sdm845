@@ -363,8 +363,8 @@ else
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
 CC		= $(CROSS_COMPILE)gcc
-AR		= $(CROSS_COMPILE)ar
-NM		= $(CROSS_COMPILE)nm
+AR             ?= $(CROSS_COMPILE)ar
+NM             ?= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
@@ -413,8 +413,9 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -Wno-format-security \
 		   -Wno-unused-function\
 		   -ffast-math -mcpu=cortex-a55 -mtune=cortex-a55 \
-		   -std=gnu89 \
-		   -mllvm -polly \
+		   -std=gnu89
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS   += -mllvm -polly \
 		   -mllvm -polly-run-dce \
 		   -mllvm -polly-run-inliner \
 		   -mllvm -polly-loopfusion-greedy=1 \
@@ -424,6 +425,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -mllvm -polly-vectorizer=stripmine \
 		   -mllvm -polly-detect-keep-going \
 		   -mllvm -polly-invariant-load-hoisting
+endif
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
@@ -705,6 +707,9 @@ all: vmlinux
 
 KBUILD_CFLAGS	+= $(call cc-option,-fno-PIE)
 KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
+CFLAGS_PGO_CLANG := -fprofile-generate
+export CFLAGS_PGO_CLANG
+
 CFLAGS_GCOV	:= -fprofile-arcs -ftest-coverage \
 	$(call cc-option,-fno-tree-loop-im) \
 	$(call cc-disable-warning,maybe-uninitialized,)
@@ -728,6 +733,23 @@ LLVM_DIS	:= llvm-dis
 export LLVM_AR LLVM_DIS
 # Set O3 optimization level for LTO
 LDFLAGS		+= --plugin-opt=O3
+endif
+
+
+ifdef CONFIG_LTO_GCC
+LTO_CFLAGS	:= -flto -flto=jobserver -fno-fat-lto-objects \
+		   -fuse-linker-plugin -fwhole-program
+KBUILD_CFLAGS	+= $(LTO_CFLAGS)
+LTO_LDFLAGS	:= $(LTO_CFLAGS) -Wno-lto-type-mismatch -Wno-psabi \
+		   -Wno-stringop-overflow -flinker-output=nolto-rel
+LDFINAL		:= $(CONFIG_SHELL) $(srctree)/scripts/gcc-ld $(LTO_LDFLAGS)
+AR		:= $(CROSS_COMPILE)gcc-ar
+NM		:= $(CROSS_COMPILE)gcc-nm
+DISABLE_LTO	:= -fno-lto
+export DISABLE_LTO LDFINAL
+else
+LDFINAL		:= $(LD)
+export LDFINAL
 endif
 
 # The arch Makefile can set ARCH_{CPP,A,C}FLAGS to override the default
@@ -817,7 +839,7 @@ else
 KBUILD_CFLAGS   += -O2
 endif
 
-KBUILD_CFLAGS	+= -O2 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd+sve \
+KBUILD_CFLAGS	+= -O2 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd \
 -fomit-frame-pointer -pipe \
 -funroll-loops \
 -ftree-vectorize \
@@ -846,20 +868,8 @@ ifeq ($(cc-name),clang)
 KBUILD_CFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
 KBUILD_AFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
 else
-KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a
-KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a
-endif
-
-ifeq ($(cc-name),clang)
-KBUILD_CFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
-KBUILD_AFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
-else
-KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a
-KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55 -mtune=cortex-a75.cortex-a55 -march=armv8.2-a
-endif
-
-ifdef CONFIG_CC_WERROR
-# KBUILD_CFLAGS	+= -Werror
+KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
+KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -1033,9 +1043,6 @@ KBUILD_CFLAGS	+= $(call cc-option,-fmerge-constants)
 
 # Make sure -fstack-check isn't enabled (like gentoo apparently did)
 KBUILD_CFLAGS  += $(call cc-option,-fno-stack-check,)
-
-# conserve stack if available
-KBUILD_CFLAGS   += $(call cc-option,-fconserve-stack)
 
 # disallow errors like 'EXPORT_GPL(foo);' with missing header
 KBUILD_CFLAGS   += $(call cc-option,-Werror=implicit-int)

@@ -159,6 +159,10 @@ extern int mmap_rnd_compat_bits __read_mostly;
 
 extern int sysctl_max_map_count;
 
+extern unsigned long sysctl_anon_min_kbytes;
+extern unsigned long sysctl_clean_low_kbytes;
+extern unsigned long sysctl_clean_min_kbytes;
+
 extern unsigned long sysctl_user_reserve_kbytes;
 extern unsigned long sysctl_admin_reserve_kbytes;
 
@@ -1595,6 +1599,17 @@ int get_cmdline(struct task_struct *task, char *buffer, int buflen);
 static inline bool vma_is_anonymous(struct vm_area_struct *vma)
 {
 	return !vma->vm_ops;
+}
+
+static inline bool is_shared_maywrite(vm_flags_t vm_flags)
+{
+	return (vm_flags & (VM_SHARED | VM_MAYWRITE)) ==
+		(VM_SHARED | VM_MAYWRITE);
+}
+
+static inline bool vma_is_shared_maywrite(struct vm_area_struct *vma)
+{
+	return is_shared_maywrite(vma->vm_flags);
 }
 
 int vma_is_stack_for_current(struct vm_area_struct *vma);

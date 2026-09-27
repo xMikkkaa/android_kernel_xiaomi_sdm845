@@ -313,3 +313,7 @@ source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 
 endmenu
+
+config KSU_SUSFS_AUTO_MOUNT_SOURCE_SPOOF
+    bool "Enable spoofing of susfs auto mount source"
+    default y

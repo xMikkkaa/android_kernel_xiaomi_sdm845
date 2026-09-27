@@ -26,7 +26,7 @@ NC='\033[0m' # No Color
 KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Neutron Clang toolchain
-CLANG_DIR="/home/mik/xMik-Project/toolchains/neutron-clang"
+CLANG_DIR="${KERNEL_DIR}/neutron-clang"
 CLANG_BIN="${CLANG_DIR}/bin"
 
 # AnyKernel3 directory (for flashable zip packaging)
@@ -52,7 +52,7 @@ JOBS="$(nproc --all)"
 
 # Kernel name from defconfig LOCALVERSION
 OC_VAL="805"
-KERNEL_NAME="Chimera-V4"
+KERNEL_NAME="Chimera-V5"
 
 # Build variant (default or nse)
 VARIANT="default"
@@ -70,6 +70,7 @@ export PATH="${CLANG_BIN}:${PATH}"
 export ARCH="${ARCH}"
 export SUBARCH="${ARCH}"
 export KBUILD_BUILD_USER="xMikkkaa"
+export KBUILD_BUILD_HOST="Sunny"
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Make arguments
@@ -293,6 +294,7 @@ package_zip() {
     local ZIP_NAME="${KERNEL_NAME}.zip"
 
     mkdir -p "${ZIP_DIR}"
+    printf '%s\n' "${BASE_KERNEL_NAME}" > "${OUT_DIR}/kernel_name"
 
     cd "${STAGING_DIR}"
     zip -r9 "${ZIP_DIR}/${ZIP_NAME}" . \
@@ -388,20 +390,23 @@ show_help() {
 # ─────────────────────────────────────────────────────────────────────────────
 apply_gpu_oc() {
     log_step "Applying GPU Overclock: ${OC_VAL} MHz"
-    
-    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
-    sed -i -E "s/8(05|20|35|44)000000/${OC_VAL}000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
-    
-    log_success "GPU frequency set to ${OC_VAL} MHz in DT and Clock Driver"
+
+    local OC_PATCH="${KERNEL_DIR}/patches/gpu-oc/oc-${OC_VAL}.patch"
+    if [ ! -f "${OC_PATCH}" ]; then
+        log_error "OC patch not found: ${OC_PATCH}"
+        exit 1
+    fi
+    patch -p1 -d "${KERNEL_DIR}" < "${OC_PATCH}"
+
+    log_success "Stepped GPU table ${OC_VAL} MHz applied"
 }
 
 restore_gpu_oc() {
-    if [ "${OC_VAL}" != "805" ]; then
-        log_step "Restoring original GPU frequency configuration..."
-        sed -i -E "s/${OC_VAL}000000/805000000/g" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-v2.dtsi"
-        sed -i -E "s/${OC_VAL}000000/805000000/g" "${KERNEL_DIR}/drivers/clk/qcom/gpucc-sdm845.c"
-        log_success "Original files restored"
-    fi
+    log_step "Restoring stock GPU tables..."
+    git -C "${KERNEL_DIR}" checkout -- \
+        arch/arm64/boot/dts/qcom/sdm845-v2.dtsi \
+        drivers/clk/qcom/gpucc-sdm845.c
+    log_success "Stock GPU tables restored"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -414,85 +419,33 @@ apply_fstab_variant() {
     fi
 
     log_step "Applying fstab configuration..."
-    cp "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak"
-    
+
+    local FSTAB_PATCH
     if [ "${VARIANT}" = "nse" ]; then
         log_info "Applying NSE (Non-System_Ext) fstab..."
-        cat << 'EOF' >> "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-
-/* NSE Fstab appended by compile.sh */
-&firmware {
-	android {
-		fstab {
-			compatible = "android,fstab";
-			system {
-				compatible = "android,system";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/system";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			vendor {
-				compatible = "android,vendor";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-		};
-	};
-};
-EOF
-        log_success "NSE fstab applied to sdm845-xiaomi-common.dtsi"
+        FSTAB_PATCH="${KERNEL_DIR}/patches/fstab/fstab-nse.patch"
     else
         log_info "Applying Default (System_Ext) fstab..."
-        cat << 'EOF' >> "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-
-/* Default Fstab appended by compile.sh */
-&firmware {
-	android {
-		fstab {
-			compatible = "android,fstab";
-			system {
-				compatible = "android,system";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/system";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			system_ext {
-				compatible = "android,system_ext";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/cust";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-			vendor {
-				compatible = "android,vendor";
-				dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
-				type = "ext4";
-				mnt_flags = "ro,barrier=1,discard";
-				fsmgr_flags = "wait";
-				status = "ok";
-			};
-		};
-	};
-};
-EOF
-        log_success "Default fstab applied to sdm845-xiaomi-common.dtsi"
+        FSTAB_PATCH="${KERNEL_DIR}/patches/fstab/fstab-default.patch"
     fi
+
+    if [ ! -f "${FSTAB_PATCH}" ]; then
+        log_error "Fstab patch not found: ${FSTAB_PATCH}"
+        exit 1
+    fi
+    patch -p1 -d "${KERNEL_DIR}" < "${FSTAB_PATCH}"
+
+    log_success "Fstab ${VARIANT} variant applied via patch"
 }
 
 restore_fstab_variant() {
-    if [ -f "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak" ]; then
-        log_step "Restoring original fstab configuration..."
-        mv "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi.bak" "${KERNEL_DIR}/arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi"
-        log_success "Original sdm845-xiaomi-common.dtsi restored"
+    if [ "${VARIANT}" = "dynamic" ]; then
+        return
     fi
+    log_step "Restoring original fstab configuration..."
+    git -C "${KERNEL_DIR}" checkout -- \
+        arch/arm64/boot/dts/qcom/sdm845-xiaomi-common.dtsi
+    log_success "Original sdm845-xiaomi-common.dtsi restored"
 }
 
 restore_audio_configs() {
@@ -552,6 +505,8 @@ main() {
         esac
     done
 
+    BASE_KERNEL_NAME="${KERNEL_NAME}"
+
     if [ "${VARIANT}" = "nse" ] && [ "${DISABLE_AUDIO}" = "true" ]; then
         KERNEL_NAME="${KERNEL_NAME}-NSE-Disable-Audio-OC${OC_VAL}"
     elif [ "${VARIANT}" = "nse" ]; then
@@ -571,7 +526,7 @@ main() {
         exit 0
     fi
 
-    trap 'restore_gpu_oc; restore_fstab_variant; restore_audio_configs' EXIT
+    trap 'restore_fstab_variant; restore_gpu_oc; restore_audio_configs' EXIT
 
     apply_gpu_oc
     apply_fstab_variant

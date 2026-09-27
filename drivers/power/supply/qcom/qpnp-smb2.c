@@ -990,7 +990,7 @@ static int smb2_usb_main_set_prop(struct power_supply *psy,
 		rc = smblib_toggle_stat(chg, val->intval);
 		break;
 	default:
-		pr_err("set prop %d is not supported\n", psp);
+		pr_debug("set prop %d is not supported\n", psp);
 		rc = -EINVAL;
 		break;
 	}
@@ -2887,7 +2887,9 @@ static void bypass_charge_sysfs_init(struct smb_charger *chg)
 	global_smb_chg = chg;
 	bypass_charge_kobj = kobject_create_and_add("bypass_charge", kernel_kobj);
 	if (bypass_charge_kobj) {
-		sysfs_create_group(bypass_charge_kobj, &bypass_charge_attr_group);
+		if (sysfs_create_group(bypass_charge_kobj,
+				       &bypass_charge_attr_group))
+			pr_err("failed to create bypass_charge sysfs group\n");
 	}
 }
 

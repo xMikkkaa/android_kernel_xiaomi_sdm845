@@ -171,7 +171,7 @@ __read_mostly unsigned int sched_ravg_window =
 __read_mostly unsigned int walt_cpu_util_freq_divisor;
 
 /* Initial task load. Newly created tasks are assigned this load. */
-unsigned int __read_mostly sysctl_sched_init_task_load_pct = 15;
+unsigned int __read_mostly sysctl_sched_init_task_load_pct = 25;
 
 /*
  * Maximum possible frequency across all cpus. Task demand and cpu
@@ -2865,6 +2865,36 @@ add_task_to_group(struct task_struct *p, struct related_thread_group *grp)
 	return 0;
 }
 
+#ifdef CONFIG_UCLAMP_TASK_GROUP
+static inline bool uclamp_task_colocated(struct task_struct *p)
+{
+	struct cgroup_subsys_state *css;
+	struct task_group *tg;
+	bool colocate;
+
+	rcu_read_lock();
+	css = task_css(p, cpu_cgrp_id);
+	if (!css) {
+		rcu_read_unlock();
+		return false;
+	}
+	tg = container_of(css, struct task_group, css);
+	if (tg->latency_sensitive == 1 || tg->boosted == 1)
+		colocate = true;
+	else
+		colocate = false;
+
+	rcu_read_unlock();
+
+	return colocate;
+}
+#else
+static inline bool uclamp_task_colocated(struct task_struct *p)
+{
+	return schedtune_task_colocated(p);
+}
+#endif /* CONFIG_UCLAMP_TASK_GROUP */
+
 void add_new_task_to_grp(struct task_struct *new)
 {
 	unsigned long flags;
@@ -2876,7 +2906,7 @@ void add_new_task_to_grp(struct task_struct *new)
 	 * lock. Even if there is a race, it will be added
 	 * to the co-located cgroup via cgroup attach.
 	 */
-	if (!schedtune_task_colocated(new))
+	if (!uclamp_task_colocated(new))
 		return;
 
 	grp = lookup_related_thread_group(DEFAULT_CGROUP_COLOC_ID);
@@ -2887,7 +2917,7 @@ void add_new_task_to_grp(struct task_struct *new)
 	 * group. or it might have taken out from the colocated schedtune
 	 * cgroup. check these conditions under lock.
 	 */
-	if (!schedtune_task_colocated(new) || new->grp) {
+	if (!uclamp_task_colocated(new) || new->grp) {
 		write_unlock_irqrestore(&related_thread_group_lock, flags);
 		return;
 	}

@@ -38,21 +38,13 @@ static noinline void susfs_ksu_handle_vfs_fstat_helper(int fd, loff_t *kstat_siz
 
 extern struct static_key_true ksu_su_compat_enabled;
 extern bool __ksu_is_allow_uid_for_current(uid_t uid);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 extern int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);
-#else
-extern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);
-#endif
 
-static noinline void susfs_ksu_handle_stat_helper(int *dfd, const char __user **filename_user, int *flags)
+static noinline void susfs_ksu_handle_stat_helper(int *dfd, struct filename **filename_user, int *flags)
 {
 	if (static_branch_likely(&ksu_su_compat_enabled)) {
 		if (unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
-			ksu_handle_stat(dfd, (struct filename **)filename_user, flags);
-#else
 			ksu_handle_stat(dfd, filename_user, flags);
-#endif
 	}
 }
 #endif // #ifdef CONFIG_KSU_SUSFS
@@ -83,7 +75,8 @@ void generic_fillattr(struct inode *inode, struct kstat *stat)
 	stat->blksize = i_blocksize(inode);
 	stat->blocks = inode->i_blocks;
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
+	if (susfs_is_current_app_uid())
+		susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
 #endif
 }
 
@@ -109,7 +102,7 @@ int vfs_getattr_nosec(struct path *path, struct kstat *stat)
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 	{
 		int err = inode->i_op->getattr(path->mnt, path->dentry, stat);
-		if (!err)
+		if (!err && susfs_is_current_app_uid())
 			susfs_sus_kstat_spoof_generic_fillattr(inode, stat);
 		return err;
 	}
@@ -159,12 +152,8 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
 	unsigned int lookup_flags = 0;
 
 #ifdef CONFIG_KSU_SUSFS
-	if (likely(susfs_is_current_proc_umounted()))
-		goto orig_flow;
-
-	susfs_ksu_handle_stat_helper(&dfd, &filename, &flag);
-
-orig_flow:
+	struct filename *fname = NULL;
+	int empty = 0;
 #endif
 
 	if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
@@ -176,7 +165,19 @@ orig_flow:
 	if (flag & AT_EMPTY_PATH)
 		lookup_flags |= LOOKUP_EMPTY;
 retry:
+#ifdef CONFIG_KSU_SUSFS
+	fname = getname_flags(filename, lookup_flags, &empty);
+
+	if (likely(susfs_is_current_proc_no_su()))
+		goto orig_flow;
+
+	susfs_ksu_handle_stat_helper(&dfd, &fname, &flag);
+
+orig_flow:
+	error = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
+#else
 	error = user_path_at(dfd, filename, lookup_flags, &path);
+#endif
 	if (error)
 		goto out;
 
