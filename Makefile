@@ -735,6 +735,13 @@ export LLVM_AR LLVM_DIS
 LDFLAGS		+= --plugin-opt=O3
 endif
 
+ifdef CONFIG_CC_IS_GCC
+GCC_FLAGS	:= -fgraphite \
+		   -fgraphite-identity \
+		   -floop-nest-optimize \
+		   -fno-semantic-interposition
+KBUILD_CFLAGS	+= $(GCC_FLAGS)
+endif
 
 ifdef CONFIG_LTO_GCC
 LTO_CFLAGS	:= -flto -flto=jobserver -fno-fat-lto-objects \
