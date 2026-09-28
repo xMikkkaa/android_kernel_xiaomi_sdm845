@@ -20,9 +20,9 @@ ghash-ce-y := ghash-ce-glue.o ghash-ce-core.o
 obj-$(CONFIG_CRYPTO_AES_ARM64_CE) += aes-ce-cipher.o
 aes-ce-cipher-y := aes-ce-core.o aes-ce-glue.o
 ifeq ($(cc-name),gcc)
-CFLAGS_aes-ce-cipher-core.o += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55+crypto
+CFLAGS_aes-ce-cipher-core.o += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
 else
-CFLAGS_aes-ce-cipher-core.o += -mcpu=cortex-a55+crypto -mtune=cortex-a55+crypto
+CFLAGS_aes-ce-cipher-core.o += -mcpu=cortex-a55+crypto -mtune=cortex-a55
 endif
 
 obj-$(CONFIG_CRYPTO_AES_ARM64_CE_CCM) += aes-ce-ccm.o
