@@ -846,11 +846,11 @@ else
 KBUILD_CFLAGS   += -O2
 endif
 
-KBUILD_CFLAGS	+= -O2 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd \
--fomit-frame-pointer -pipe \
--funroll-loops \
--ftree-vectorize \
--fforce-addr \
+# KBUILD_CFLAGS	+= -O2 -mtune=cortex-a55 -mcpu=cortex-a55+crc+crypto+fp16+simd \
+# -fomit-frame-pointer -pipe \
+# -funroll-loops \
+# -ftree-vectorize \
+# -fforce-addr \
 ##-ftree-loop-vectorize \
 ##-Wno-attribute-alias 
 
