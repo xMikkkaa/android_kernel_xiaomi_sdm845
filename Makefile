@@ -735,13 +735,6 @@ export LLVM_AR LLVM_DIS
 LDFLAGS		+= --plugin-opt=O3
 endif
 
-ifdef CONFIG_CC_IS_GCC
-GCC_FLAGS	:= -fgraphite \
-		   -fgraphite-identity \
-		   -floop-nest-optimize \
-		   -fno-semantic-interposition
-KBUILD_CFLAGS	+= $(GCC_FLAGS)
-endif
 
 ifdef CONFIG_LTO_GCC
 LTO_CFLAGS	:= -flto -flto=jobserver -fipa-pta -fno-fat-lto-objects \
@@ -877,6 +870,11 @@ KBUILD_AFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
 else
 KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
 KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
+GCC_FLAGS	:= -fgraphite \
+		   -fgraphite-identity \
+		   -floop-nest-optimize \
+		   -fno-semantic-interposition
+KBUILD_CFLAGS	+= $(GCC_FLAGS)
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
