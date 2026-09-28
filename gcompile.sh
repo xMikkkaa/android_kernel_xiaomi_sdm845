@@ -2,7 +2,7 @@
 # ============================================================================
 #  Chimera Kernel Build Script for Xiaomi Poco F1 (beryllium)
 #  Kernel: Linux 4.9.337 (arm64 / SDM845)
-#  Toolchain: Arm GNU GCC 14.2 (aarch64 + arm32 for vdso32).
+#  Toolchain: GCC 16.2.0 nolibc (aarch64 + arm32 for vdso32).
 #  Author: xMikkkaa
 # ============================================================================
 
@@ -30,8 +30,8 @@ TOOLCHAINS_DIR="${TOOLCHAINS_DIR:-${HOME}/xMik-Project/toolchains}"
 TC_DIR=""
 TC32_DIR=""
 
-GCC64_DIR="${TOOLCHAINS_DIR}/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu"
-GCC32_DIR="${TOOLCHAINS_DIR}/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-linux-gnueabihf"
+GCC64_DIR="${TOOLCHAINS_DIR}/gcc-16.2.0-nolibc/aarch64-linux"
+GCC32_DIR="${TOOLCHAINS_DIR}/gcc-16.2.0-nolibc/arm-linux-gnueabi"
 
 TC_BIN=""
 TC32_BIN=""
@@ -92,10 +92,10 @@ setup_make_args() {
         O="${OUT_DIR}"
         ARCH="${ARCH}"
         SUBARCH="${ARCH}"
-        CC="ccache aarch64-none-linux-gnu-gcc"
-        CROSS_COMPILE="aarch64-none-linux-gnu-"
-        CCARM32="ccache arm-none-linux-gnueabihf-gcc"
-        CROSS_COMPILE_ARM32="arm-none-linux-gnueabihf-"
+        CC="ccache aarch64-linux-gcc"
+        CROSS_COMPILE="aarch64-linux-"
+        CCARM32="ccache arm-linux-gnueabi-gcc"
+        CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
         LOCALVERSION="-${KERNEL_NAME}"
     )
 }
@@ -153,24 +153,24 @@ run_release_builds() {
 preflight_check() {
     log_step "Pre-flight Checks"
 
-    if [ ! -x "${TC_BIN}/aarch64-none-linux-gnu-gcc" ]; then
-        log_error "aarch64 GCC not found at ${TC_BIN}/aarch64-none-linux-gnu-gcc"
+    if [ ! -x "${TC_BIN}/aarch64-linux-gcc" ]; then
+        log_error "aarch64 GCC not found at ${TC_BIN}/aarch64-linux-gcc"
         log_error "Set TOOLCHAINS_DIR or pass --tc-dir=<path>"
         exit 1
     fi
 
     local GCC_VERSION
-    GCC_VERSION=$("${TC_BIN}/aarch64-none-linux-gnu-gcc" --version | head -1)
+    GCC_VERSION=$("${TC_BIN}/aarch64-linux-gcc" --version | head -1)
     log_info "GCC: ${GCC_VERSION}"
 
-    if [ ! -x "${TC_BIN}/aarch64-none-linux-gnu-ld" ]; then
+    if [ ! -x "${TC_BIN}/aarch64-linux-ld" ]; then
         log_error "cross ld not found in ${TC_BIN}"
         exit 1
     fi
-    log_info "Linker: aarch64-none-linux-gnu-ld (GNU BFD)"
+    log_info "Linker: aarch64-linux-ld (GNU BFD)"
 
-    if [ ! -x "${TC32_BIN}/arm-none-linux-gnueabihf-gcc" ]; then
-        log_error "arm32 GCC not found at ${TC32_BIN}/arm-none-linux-gnueabihf-gcc"
+    if [ ! -x "${TC32_BIN}/arm-linux-gnueabi-gcc" ]; then
+        log_error "arm32 GCC not found at ${TC32_BIN}/arm-linux-gnueabi-gcc"
         log_error "Set --tc32-dir=<path> (needed for vdso32)"
         exit 1
     fi
