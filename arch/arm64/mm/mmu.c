@@ -556,7 +556,7 @@ static void __init map_kernel(pgd_t *pgd)
  * paging_init() sets up the page tables, initialises the zone memory
  * maps and sets up the zero page.
  */
-void __init paging_init(void)
+void __init __visible paging_init(void)
 {
 	phys_addr_t pgd_phys = early_pgtable_alloc();
 	pgd_t *pgd = pgd_set_fixmap(pgd_phys);

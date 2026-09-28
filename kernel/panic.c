@@ -131,7 +131,7 @@ EXPORT_SYMBOL(nmi_panic);
  *
  *	This function never returns.
  */
-void panic(const char *fmt, ...)
+__visible void panic(const char *fmt, ...)
 {
 	static char buf[1024];
 	va_list args;

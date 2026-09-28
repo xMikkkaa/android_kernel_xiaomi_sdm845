@@ -11,7 +11,7 @@ asmlinkage long sys_ni_syscall(void);
 /*
  * Non-implemented system calls get redirected here.
  */
-asmlinkage long sys_ni_syscall(void)
+asmlinkage __visible long sys_ni_syscall(void)
 {
 	return -ENOSYS;
 }

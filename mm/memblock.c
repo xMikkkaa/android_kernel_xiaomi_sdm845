@@ -686,7 +686,7 @@ int __init_memblock memblock_remove(phys_addr_t base, phys_addr_t size)
 }
 
 
-int __init_memblock memblock_free(phys_addr_t base, phys_addr_t size)
+int __init_memblock __visible memblock_free(phys_addr_t base, phys_addr_t size)
 {
 	memblock_dbg("   memblock_free: [%#016llx-%#016llx] %pF\n",
 		     (unsigned long long)base,
@@ -698,7 +698,8 @@ int __init_memblock memblock_free(phys_addr_t base, phys_addr_t size)
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
-int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
+int __init_memblock __visible
+memblock_reserve(phys_addr_t base, phys_addr_t size)
 {
 	memblock_dbg("memblock_reserve: [%#016llx-%#016llx] flags %#02lx %pF\n",
 		     (unsigned long long)base,
@@ -779,7 +780,8 @@ int __init_memblock memblock_mark_mirror(phys_addr_t base, phys_addr_t size)
  *
  * Return 0 on success, -errno on failure.
  */
-int __init_memblock memblock_mark_nomap(phys_addr_t base, phys_addr_t size)
+int __init_memblock __visible
+memblock_mark_nomap(phys_addr_t base, phys_addr_t size)
 {
 	return memblock_setclr_flag(base, size, 1, MEMBLOCK_NOMAP);
 }
@@ -1337,7 +1339,7 @@ void * __init memblock_virt_alloc_try_nid_nopanic(
  * RETURNS:
  * Virtual address of allocated memory block on success, NULL on failure.
  */
-void * __init memblock_virt_alloc_try_nid(
+void * __init __visible memblock_virt_alloc_try_nid(
 			phys_addr_t size, phys_addr_t align,
 			phys_addr_t min_addr, phys_addr_t max_addr,
 			int nid)

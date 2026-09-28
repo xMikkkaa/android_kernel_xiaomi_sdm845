@@ -381,7 +381,7 @@ static int retrans_to_secs(u8 retrans, int timeout, int rto_max)
  * NOTE: A lot of things set to zero explicitly by call to
  *       sk_alloc() so need not be done here.
  */
-void tcp_init_sock(struct sock *sk)
+__visible void tcp_init_sock(struct sock *sk)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);

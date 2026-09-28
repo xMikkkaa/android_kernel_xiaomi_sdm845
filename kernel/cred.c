@@ -187,7 +187,7 @@ void exit_creds(struct task_struct *tsk)
  * The caller must also make sure task doesn't get deleted, either by holding a
  * ref on task or by holding tasklist_lock to prevent it from being unlinked.
  */
-const struct cred *get_task_cred(struct task_struct *task)
+__visible const struct cred *get_task_cred(struct task_struct *task)
 {
 	const struct cred *cred;
 
@@ -243,7 +243,7 @@ error:
  *
  * Call commit_creds() or abort_creds() to clean up.
  */
-struct cred *prepare_creds(void)
+__visible struct cred *prepare_creds(void)
 {
 	struct task_struct *task = current;
 	const struct cred *old;
@@ -423,7 +423,7 @@ static bool cred_cap_issubset(const struct cred *set, const struct cred *subset)
  * Always returns 0 thus allowing this function to be tail-called at the end
  * of, say, sys_setgid().
  */
-int commit_creds(struct cred *new)
+__visible int commit_creds(struct cred *new)
 {
 	struct task_struct *task = current;
 	const struct cred *old = task->real_cred;

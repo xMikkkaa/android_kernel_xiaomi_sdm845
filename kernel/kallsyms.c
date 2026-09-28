@@ -162,7 +162,7 @@ static unsigned long kallsyms_sym_address(int idx)
 }
 
 /* Lookup the address for this symbol. Returns 0 if not found. */
-unsigned long kallsyms_lookup_name(const char *name)
+__visible unsigned long kallsyms_lookup_name(const char *name)
 {
 	char namebuf[KSYM_NAME_LEN];
 	unsigned long i;

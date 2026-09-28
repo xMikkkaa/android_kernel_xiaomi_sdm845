@@ -224,8 +224,8 @@ out:
  * This function retrieves the capabilities of the nominated task and returns
  * them to the caller.
  */
-int cap_capget(struct task_struct *target, kernel_cap_t *effective,
-	       kernel_cap_t *inheritable, kernel_cap_t *permitted)
+__visible int cap_capget(struct task_struct *target, kernel_cap_t *effective,
+		       kernel_cap_t *inheritable, kernel_cap_t *permitted)
 {
 	const struct cred *cred;
 
@@ -267,11 +267,11 @@ static inline int cap_inh_is_capped(void)
  * process's capability sets.  The changes are made to the proposed new
  * credentials, and assuming no error, will be committed by the caller of LSM.
  */
-int cap_capset(struct cred *new,
-	       const struct cred *old,
-	       const kernel_cap_t *effective,
-	       const kernel_cap_t *inheritable,
-	       const kernel_cap_t *permitted)
+__visible int cap_capset(struct cred *new,
+		       const struct cred *old,
+		       const kernel_cap_t *effective,
+		       const kernel_cap_t *inheritable,
+		       const kernel_cap_t *permitted)
 {
 	if (cap_inh_is_capped() &&
 	    !cap_issubset(*inheritable,
@@ -923,8 +923,8 @@ static int cap_prctl_drop(unsigned long cap)
  * here, other -ve on error.  If -ENOSYS is returned, sys_prctl() and other LSM
  * modules will consider performing the function.
  */
-int cap_task_prctl(int option, unsigned long arg2, unsigned long arg3,
-		   unsigned long arg4, unsigned long arg5)
+__visible int cap_task_prctl(int option, unsigned long arg2, unsigned long arg3,
+			   unsigned long arg4, unsigned long arg5)
 {
 	const struct cred *old = current_cred();
 	struct cred *new;

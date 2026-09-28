@@ -1361,6 +1361,7 @@ endchoice
 
 config LTO_GCC
 	bool "Enable Link Time Optimization for GCC"
+	select THIN_ARCHIVES
 
 config HAVE_LD_DEAD_CODE_DATA_ELIMINATION
 	bool

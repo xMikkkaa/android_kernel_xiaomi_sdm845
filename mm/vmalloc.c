@@ -2281,7 +2281,7 @@ static void __vfree(const void *addr)
  *
  *	NOTE: assumes that the object at *addr has a size >= sizeof(llist_node)
  */
-void vfree(const void *addr)
+__visible void vfree(const void *addr)
 {
 	BUG_ON(in_nmi());
 
@@ -2539,7 +2539,7 @@ void *__vmalloc_node_flags_caller(unsigned long size, int node, gfp_t flags,
  *	For tight control over page level allocator and protection flags
  *	use __vmalloc() instead.
  */
-void *vmalloc(unsigned long size)
+__visible void *vmalloc(unsigned long size)
 {
 	return __vmalloc_node_flags(size, NUMA_NO_NODE,
 				    GFP_KERNEL);

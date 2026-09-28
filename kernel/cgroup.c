@@ -5862,7 +5862,7 @@ int __init cgroup_init_early(void)
  * Register cgroup filesystem and /proc file, and initialize
  * any subsystems that didn't request early init.
  */
-int __init cgroup_init(void)
+int __init __visible cgroup_init(void)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
