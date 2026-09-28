@@ -737,7 +737,7 @@ endif
 
 
 ifdef CONFIG_LTO_GCC
-LTO_CFLAGS	:= -flto -flto=jobserver -fipa-pta -fno-fat-lto-objects \
+LTO_CFLAGS	:= -flto -flto=jobserver -fno-fat-lto-objects \
 		   -fuse-linker-plugin -fwhole-program
 KBUILD_CFLAGS	+= $(LTO_CFLAGS)
 LTO_LDFLAGS	:= $(LTO_CFLAGS) -Wno-lto-type-mismatch -Wno-psabi \
@@ -873,7 +873,8 @@ KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
 GCC_FLAGS	:= -fgraphite \
 		   -fgraphite-identity \
 		   -floop-nest-optimize \
-		   -fno-semantic-interposition
+		   -fno-semantic-interposition \
+		   -fipa-pta
 KBUILD_CFLAGS	+= $(GCC_FLAGS)
 endif
 
