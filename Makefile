@@ -411,21 +411,9 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -pipe \
 		   -fno-strict-aliasing -fno-common -fshort-wchar \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -Wno-unused-function\
-		   -ffast-math -mcpu=cortex-a55 -mtune=cortex-a55 \
+		   -Wno-unused-function \
 		   -std=gnu89
-ifeq ($(cc-name),clang)
-KBUILD_CFLAGS   += -mllvm -polly \
-		   -mllvm -polly-run-dce \
-		   -mllvm -polly-run-inliner \
-		   -mllvm -polly-loopfusion-greedy=1 \
-		   -mllvm -polly-reschedule=1 \
-		   -mllvm -polly-postopts=1 \
-		   -mllvm -polly-ast-use-context \
-		   -mllvm -polly-vectorizer=stripmine \
-		   -mllvm -polly-detect-keep-going \
-		   -mllvm -polly-invariant-load-hoisting
-endif
+KBUILD_CFLAGS   += $(call cc-option,-ffast-math)
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_AFLAGS_KERNEL :=
@@ -870,12 +858,12 @@ KBUILD_AFLAGS += -mcpu=cortex-a55 -mtune=cortex-a55 -march=armv8.2-a+crypto
 else
 KBUILD_CFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
 KBUILD_AFLAGS += -mcpu=cortex-a75.cortex-a55+crypto -mtune=cortex-a75.cortex-a55
-GCC_FLAGS	:= -fgraphite \
-		   -fgraphite-identity \
-		   -floop-nest-optimize \
-		   -fno-semantic-interposition \
-		   -fipa-pta
-KBUILD_CFLAGS	+= $(GCC_FLAGS)
+# Probe each flag so toolchains built without graphite still compile.
+KBUILD_CFLAGS += $(call cc-option,-fgraphite,)
+KBUILD_CFLAGS += $(call cc-option,-fgraphite-identity,)
+KBUILD_CFLAGS += $(call cc-option,-floop-nest-optimize,)
+KBUILD_CFLAGS += $(call cc-option,-fno-semantic-interposition,)
+KBUILD_CFLAGS += $(call cc-option,-fipa-pta,)
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
